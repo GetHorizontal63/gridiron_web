@@ -41,12 +41,11 @@
 
     const logo = name => SITE.url(`assets/manager-logos/${LOGOS.has(String(name).toLowerCase()) ? String(name).toLowerCase() : 'default'}.png`);
 
-    // Team name for a season; falls back to the nearest season the manager has a name for
+    // Team name for a season. Never borrowed from another season: a missing name shows as the manager's team
+    // instead of last year's name (team names change every year).
     function teamName(b, owner, season) {
         const map = b.names[owner] || {};
-        if (map[season]) return map[season];
-        const years = Object.keys(map).map(Number).sort((x, y) => Math.abs(x - season) - Math.abs(y - season));
-        return years.length ? map[years[0]] : `${owner}'s Team`;
+        return map[season] || `${owner}'s Team`;
     }
 
     // Accepts ?m=<owner id> or ?m=<name>

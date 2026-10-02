@@ -1,160 +1,178 @@
 {
- "Anthony": {
-  "2019": "Baton Rouge Blitz",
-  "2020": "Baton Rouge Blitz",
-  "2021": "Lakewood Dennys",
-  "2022": "Call Of Jeudy Modern Warfare",
-  "2023": "Salt Lake Shrimp THE OCKY WAY",
-  "2024": "Coach O's Burriteaux Supremeaux",
-  "2025": "Baton Rouge Blitz"
- },
- "Armando": {
-  "2019": "DangeRUSS HUNTERs",
-  "2020": "Mixon Match",
-  "2021": "Mixon Match",
-  "2022": "The COOK Show",
-  "2023": "LETS RIDE",
-  "2024": "LETS RIDE",
-  "2025": "Waddle House"
- },
- "Blake": {
-  "2019": "Behold The Cadets",
-  "2020": "The Bluecoats",
-  "2021": "The Bluecoats",
-  "2022": "2020 Runner Up",
-  "2023": "Bob Barker Died",
-  "2024": "Bob Barker Died",
-  "2025": "Bob Barker Died"
- },
- "Brennan": {
-  "2020": "Piccadilly Circus Clowns",
-  "2021": "Music City Mice",
-  "2022": "Riley Read Option",
-  "2023": "Blow-J Simpson Ford Broncos",
-  "2024": "The Lola Bunny Bouncers",
-  "2025": "The Lola Bunny Bouncers"
- },
- "Caty": {
-  "2019": "Guardians Got E. Coli",
-  "2020": "Guardians Got E. Coli",
-  "2021": "Guardians Got E. Coli",
-  "2022": "Guardians Got E. Coli",
-  "2023": "Guardians Got E. Coli"
- },
- "Cubby": {
-  "2019": "Big Booty Bronchos",
-  "2020": "Buddy's Revenge Tour",
-  "2021": "Buddy's Actually Sad",
-  "2022": "Buddy BronCho",
-  "2023": "Ganon-Pass-The-Dorf",
-  "2024": "Adrian Wojnarowski"
- },
- "Devin": {
-  "2022": "Got That DAWG In Em",
-  "2023": "MAASIN's Worst Nightmare",
-  "2024": "Generational Hater",
-  "2025": "Generational Hater"
- },
- "Gabe": {
-  "2019": "Iowa Cornfed",
-  "2020": "Iowa Cornfed",
-  "2021": "West Virginia Mountain Mamas",
-  "2022": "Iowa Cornfed",
-  "2023": "Iowa Cornfed",
-  "2024": "Iowa Cornfed",
-  "2025": "Iowa Cornfed"
- },
- "Isaiah": {
-  "2019": "Team SubTerrible",
-  "2020": "Team SubTerrible",
-  "2021": "Team SubTerrible",
-  "2022": "Team SubTerrible",
-  "2023": "Team SubTerrible",
-  "2024": "Team SubTerrible",
-  "2025": "Team SubTerrible"
- },
- "Jack": {
-  "2019": "Whitney Houston WeHaveAProblem",
-  "2020": "The Slime Cannons",
-  "2021": "Cinnamon Toast Crunch FromHell",
-  "2022": "The Dragon Lou Knew About",
-  "2023": "A Chapel in the Midst",
-  "2024": "Changed Everything \ud83d\udc8d",
-  "2025": "The Ruff Riders"
- },
- "Jackson": {
-  "2019": "Dan Acheson Is A Cuck",
-  "2020": "Dan Acheson Is A Cuck",
-  "2021": "George Hopkins Cumback Tour"
- },
- "Jason": {
-  "2024": "Pac-2 After Dark",
-  "2025": "Pac-2 After Dark"
- },
- "Jeffrey": {
-  "2019": "Academy Heat Forged",
-  "2020": "Academy Heat Forged",
-  "2021": "Lambeaughini Mercy",
-  "2022": "Lambeaughini Mercy",
-  "2023": "Lambeaughini Mercy",
-  "2024": "Lambeaughini Mercy",
-  "2025": "Lambeaughini Mercy"
- },
- "Jon": {
-  "2019": "LaCruse Wisbranson"
- },
- "Justin": {
-  "2025": "THE MIGHTY MOM LOVERS"
- },
- "Kevin": {
-  "2019": "Fiedler On The Roof",
-  "2020": "Saquon For The Team",
-  "2021": "He Hate Me",
-  "2022": "Wet Like Water",
-  "2023": "Wet Like Water",
-  "2024": "We'll C",
-  "2025": "We'll C"
- },
- "Mario": {
-  "2024": "Boutta get my 4th ring",
-  "2025": "Boutta get my 4th ring"
- },
- "Melanie": {
-  "2022": "Bloomington JustKeepWinning",
-  "2023": "Bloomington JustKeepWinning",
-  "2024": "Bloomington JustKeepWinning",
-  "2025": "Bloomington JustKeepWinning"
- },
- "Omar": {
-  "2019": "Grand Terrace Minutemen",
-  "2020": "Grand Terrace Frauds",
-  "2021": "Grand Terrace Frauds",
-  "2022": "Concord Purple Rings",
-  "2023": "I'M NOT CRAZY!!!",
-  "2024": "Ever Grande City Rayquaza's",
-  "2025": "Ever Grande City Rayquaza's"
- },
- "Peter": {
-  "2019": "Im Boutta Start Studying Now",
-  "2020": "What's Up Sir Purr",
-  "2021": "What's Up Sir Purr"
- },
- "Ryan": {
-  "2019": "The Goat House"
- },
- "Sam": {
-  "2020": "Uh Oh",
-  "2021": "Uh Oh",
-  "2022": "Uh Oh",
-  "2023": "Uh Oh"
- },
- "Tucker": {
-  "2019": "I Fucked A Dog",
-  "2020": "Texas Whataburgers",
-  "2021": "Texas Whataburgers",
-  "2022": "Worse Than MAASIN",
-  "2023": "Damardiac Arrest",
-  "2024": "Damardiac Arrest",
-  "2025": "Epstein's List"
- }
+  "Anthony": {
+    "2019": "Baton Rouge Blitz",
+    "2020": "Baton Rouge Blitz",
+    "2021": "Lakewood Dennys",
+    "2022": "Call Of Jeudy Modern Warfare",
+    "2023": "Salt Lake Shrimp THE OCKY WAY",
+    "2024": "Coach O's Burriteaux Supremeaux",
+    "2025": "Baton Rouge Blitz",
+    "2026": "Baton Rouge Blitz"
+  },
+  "Armando": {
+    "2019": "DangeRUSS HUNTERs",
+    "2020": "Mixon Match",
+    "2021": "Mixon Match",
+    "2022": "The COOK Show",
+    "2023": "LETS RIDE",
+    "2024": "LETS RIDE",
+    "2025": "Waddle House",
+    "2026": "Rubber Bucky's"
+  },
+  "Blake": {
+    "2019": "Behold The Cadets",
+    "2020": "The Bluecoats",
+    "2021": "The Bluecoats",
+    "2022": "2020 Runner Up",
+    "2023": "Bob Barker Died",
+    "2024": "Bob Barker Died",
+    "2025": "Bob Barker Died",
+    "2026": "Bob Barker Died"
+  },
+  "Brennan": {
+    "2020": "Piccadilly Circus Clowns",
+    "2021": "Music City Mice",
+    "2022": "Riley Read Option",
+    "2023": "Blow-J Simpson Ford Broncos",
+    "2024": "The Lola Bunny Bouncers",
+    "2025": "The Lola Bunny Bouncers",
+    "2026": "The Lola Bunny Bouncers"
+  },
+  "Caty": {
+    "2019": "Guardians Got E. Coli",
+    "2020": "Guardians Got E. Coli",
+    "2021": "Guardians Got E. Coli",
+    "2022": "Guardians Got E. Coli",
+    "2023": "Guardians Got E. Coli"
+  },
+  "Cubby": {
+    "2019": "Big Booty Bronchos",
+    "2020": "Buddy's Revenge Tour",
+    "2021": "Buddy's Actually Sad",
+    "2022": "Buddy BronCho",
+    "2023": "Ganon-Pass-The-Dorf",
+    "2024": "Adrian Wojnarowski"
+  },
+  "Devin": {
+    "2022": "Got That DAWG In Em",
+    "2023": "MAASIN's Worst Nightmare",
+    "2024": "Generational Hater",
+    "2025": "Generational Hater",
+    "2026": "1265 Lombardi Avenue Haters"
+  },
+  "Gabe": {
+    "2019": "Iowa Cornfed",
+    "2020": "Iowa Cornfed",
+    "2021": "West Virginia Mountain Mamas",
+    "2022": "Iowa Cornfed",
+    "2023": "Iowa Cornfed",
+    "2024": "Iowa Cornfed",
+    "2025": "Iowa Cornfed",
+    "2026": "Iowa Cornfed"
+  },
+  "Isaiah": {
+    "2019": "Team SubTerrible",
+    "2020": "Team SubTerrible",
+    "2021": "Team SubTerrible",
+    "2022": "Team SubTerrible",
+    "2023": "Team SubTerrible",
+    "2024": "Team SubTerrible",
+    "2025": "Team SubTerrible",
+    "2026": "Team SubTerrible"
+  },
+  "Jack": {
+    "2019": "Whitney Houston WeHaveAProblem",
+    "2020": "The Slime Cannons",
+    "2021": "Cinnamon Toast Crunch FromHell",
+    "2022": "The Dragon Lou Knew About",
+    "2023": "A Chapel in the Midst",
+    "2024": "Changed Everything 💍",
+    "2025": "The Ruff Riders",
+    "2026": "The Folsom Street Hounds"
+  },
+  "Jackson": {
+    "2019": "Dan Acheson Is A Cuck",
+    "2020": "Dan Acheson Is A Cuck",
+    "2021": "George Hopkins Cumback Tour"
+  },
+  "Jason": {
+    "2024": "Pac-2 After Dark",
+    "2025": "Pac-2 After Dark",
+    "2026": "Pac-2 After Dark"
+  },
+  "Jeffrey": {
+    "2019": "Academy Heat Forged",
+    "2020": "Academy Heat Forged",
+    "2021": "Lambeaughini Mercy",
+    "2022": "Lambeaughini Mercy",
+    "2023": "Lambeaughini Mercy",
+    "2024": "Lambeaughini Mercy",
+    "2025": "Lambeaughini Mercy",
+    "2026": "Lambeaughini Mercy"
+  },
+  "Jon": {
+    "2019": "LaCruse Wisbranson"
+  },
+  "Justin": {
+    "2025": "THE MIGHTY MOM LOVERS",
+    "2026": "YOU JUST GOT MOUG'D"
+  },
+  "Kevin": {
+    "2019": "Fiedler On The Roof",
+    "2020": "Saquon For The Team",
+    "2021": "He Hate Me",
+    "2022": "Wet Like Water",
+    "2023": "Wet Like Water",
+    "2024": "We'll C",
+    "2025": "We'll C"
+  },
+  "Mario": {
+    "2024": "Boutta get my 4th ring",
+    "2025": "Boutta get my 4th ring",
+    "2026": "Boutta win my 5st ring"
+  },
+  "Melanie": {
+    "2022": "Bloomington JustKeepWinning",
+    "2023": "Bloomington JustKeepWinning",
+    "2024": "Bloomington JustKeepWinning",
+    "2025": "Bloomington JustKeepWinning",
+    "2026": "Bloomington JustKeepWinning"
+  },
+  "Omar": {
+    "2019": "Grand Terrace Minutemen",
+    "2020": "Grand Terrace Frauds",
+    "2021": "Grand Terrace Frauds",
+    "2022": "Concord Purple Rings",
+    "2023": "I'M NOT CRAZY!!!",
+    "2024": "Ever Grande City Rayquaza's",
+    "2025": "Ever Grande City Rayquaza's",
+    "2026": "Tight End Enthusiasts"
+  },
+  "Peter": {
+    "2019": "Im Boutta Start Studying Now",
+    "2020": "What's Up Sir Purr",
+    "2021": "What's Up Sir Purr"
+  },
+  "Ryan": {
+    "2019": "The Goat House"
+  },
+  "Sam": {
+    "2020": "Uh Oh",
+    "2021": "Uh Oh",
+    "2022": "Uh Oh",
+    "2023": "Uh Oh"
+  },
+  "Tucker": {
+    "2019": "I Fucked A Dog",
+    "2020": "Texas Whataburgers",
+    "2021": "Texas Whataburgers",
+    "2022": "Worse Than MAASIN",
+    "2023": "Damardiac Arrest",
+    "2024": "Damardiac Arrest",
+    "2025": "Epstein's List",
+    "2026": "Epstein's List"
+  },
+  "Patric": {
+    "2026": "Deep in the Foxhole"
+  }
 }
