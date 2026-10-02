@@ -175,7 +175,7 @@ window.MONEYBALL = (() => {
             yAxis: { type: 'value', name: 'Wins', nameTextStyle: { color: c.muted }, min: 0, ...axis },
             series: [{ name: 'Made the bracket', type: 'scatter', symbolSize: 9, itemStyle: { color: c.accent }, data: A.teams.filter(t => t.made).map(t => ({ value: [t.ppg, t.wins], t })) },
                      { name: 'Missed', type: 'scatter', symbolSize: 9, itemStyle: { color: c.line }, data: A.teams.filter(t => !t.made).map(t => ({ value: [t.ppg, t.wins], t })) },
-                     ...(A.slope ? [{ name: 'Trend', type: 'line', symbol: 'none', silent: true, lineStyle: { color: c.ink, type: 'dashed' }, data: xr.map(x => [x, A.icpt + A.slope * x]) }] : [])]
+                     ...(A.slope ? [{ name: 'Trend', type: 'line', symbol: 'none', silent: true, lineStyle: { color: c.ink, type: 'dashed' }, itemStyle: { color: c.ink }, data: xr.map(x => [x, A.icpt + A.slope * x]) }] : [])]
         });
         // 4. scoring by season
         mount('mb-season', {
@@ -204,7 +204,7 @@ window.MONEYBALL = (() => {
             <div class="db-kpis" id="mb-cards"></div>
             <div class="db-grid">
                 <section class="db-tile s7"><header><h3>Scoring Distribution & Win Curve</h3><p>Every weekly score (bars) and how often that score won (line). Dashed: median and middle half.</p></header><div class="db-chart" id="mb-dist"></div></section>
-                <section class="db-tile s5"><header><h3>Wins It Takes</h3><p>For every regular-season win total: share that made the championship bracket and won the title</p></header><div class="db-chart" id="mb-wins"></div></section>
+                <section class="db-tile s5"><header><h3>Wins It Takes</h3><p>Share of teams at each win total that made the bracket, and won it all</p></header><div class="db-chart" id="mb-wins"></div></section>
                 <section class="db-tile s7"><header><h3>Points Buy Wins</h3><p>Every team-season: points per game vs wins. Dashed line = the trend.</p></header><div class="db-chart" id="mb-ppg"></div></section>
                 <section class="db-tile s5"><header><h3>Scoring by Season</h3><p>Weekly scores each year: middle half (box), full range (whiskers) and average (line)</p></header><div class="db-chart" id="mb-season"></div></section>
                 <section class="db-tile s12"><header><h3>Quads: Final Standings</h3><p>Teams grouped by where they finished the regular season (record, then points for): 1–4, 5–8, 9–12, 13–16</p></header><div id="mb-quads"></div></section>
