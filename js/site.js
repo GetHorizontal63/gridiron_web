@@ -68,6 +68,7 @@
                     <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
                     <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
                     <span id="theme-label"></span></button>
+                <a href="${url('pages/app.html')}" class="util-app">Get the App</a>
                 <a href="${url('pages/search.html')}">Search</a>
             </div>
         </div></div>
@@ -84,7 +85,7 @@
         <aside class="drawer" id="drawer" aria-label="Site map">
             <div class="drawer-head">${brand(true)}<button class="drawer-close" id="drawer-close" aria-label="Close menu">×</button></div>
             <div class="drawer-top">
-                <a href="${url('index.html')}">Home</a><a href="${url('pages/search.html')}">Search</a><a href="${url('pages/stats.html')}">Stats</a>
+                <a href="${url('index.html')}">Home</a><a href="${url('pages/search.html')}">Search</a><a href="${url('pages/stats.html')}">Stats</a><a href="${url('pages/app.html')}">Get the App</a>
             </div>
             ${SITE_MAP.filter(g => !g.hidden).map(g => `<div class="drawer-group">
                 <a href="${url(g.href)}">${esc(g.label)}</a>
@@ -123,7 +124,7 @@
         if (!holder) return;
         holder.outerHTML = `<footer class="site-footer"><div class="wrap">
             <span class="brand-text">Grass Touchers<small>Fantasy Football League · Est. 2019</small></span>
-            <nav>${NAV.map(n => `<a href="${url(n.href)}">${esc(n.label)}</a>`).join('')}</nav>
+            <nav>${NAV.map(n => `<a href="${url(n.href)}">${esc(n.label)}</a>`).join('')}<a href="${url('pages/app.html')}">Get the App</a></nav>
         </div></footer>`;
     }
 

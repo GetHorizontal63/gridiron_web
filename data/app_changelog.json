@@ -1,0 +1,39 @@
+{
+  "_about": "What changed in each Android app version; shown on pages/app.html. update_and_push.py --release --notes adds new entries.",
+  "releases": [
+    {
+      "version": "1.3.0",
+      "notes": [
+        "Tells you when a new version is out, with a one-tap link to download it",
+        "Version and Check for updates in the More tab",
+        "Loads league data from the site's new address, grasstouchers.football"
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "notes": [
+        "League logo app icon and splash screen",
+        "Stats tab: odds through the season, luck, lineup efficiency, projections and leaderboards",
+        "The full Record Book, including Record vs. Playoffs and Scorigami",
+        "Past seasons: swipe through the playoff bracket round by round",
+        "Game center: lineup efficiency and the bench players who should have started",
+        "2026 team names"
+      ]
+    },
+    {
+      "version": "1.1.0",
+      "notes": [
+        "Rebuilt for phones: bottom tabs, swipeable scores, cards sized for thumbs",
+        "No longer hides under the phone's status bar",
+        "Game center, standings with playoff odds, manager profiles and player pages",
+        "Light and dark mode"
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "notes": [
+        "First release"
+      ]
+    }
+  ]
+}
