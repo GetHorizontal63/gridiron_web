@@ -180,6 +180,7 @@
                 <section class="db-tile s5"><header><h3>Are Projections Honest?</h3><p>Every game since 2019: projected favorite's win chance vs how often they won</p></header><div class="db-chart" id="c-cal"></div></section>
                 <section class="db-tile s7"><header><h3>Biggest Upsets</h3><p id="up-sub">Lowest pre-game win probability that still won</p></header><div id="upsets"></div></section>
             </div>
+            <section class="mb" id="moneyball"><div class="loading" style="margin-top:30px">Loading Moneyball...</div></section>
             <p class="an-note">Win probability: projected margin ÷ ${sigma.toFixed(1)} pts (the spread of how far real margins miss projected ones), through a normal curve.
             Playoff odds: 5,000 simulated finishes. Each team scores around its average so far (pulled toward the league average as if it had played four average games),
             the real remaining schedule when it is on file and random pairings when it is not. Seeds use the league tiebreakers.
@@ -420,4 +421,5 @@
 
     frame();
     await build();
+    if (window.MONEYBALL) MONEYBALL.mount(document.getElementById('moneyball'));   // what it takes to win (js/moneyball.js)
 })();

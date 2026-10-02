@@ -839,3 +839,10 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 :root[data-theme="dark"] .pager-nav button.on,:root[data-theme="dark"] .seg button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 :root[data-theme="dark"] .btn-black{background:var(--dark-2);border:1px solid var(--line)}
 :root[data-theme="dark"] input[type="search"],:root[data-theme="dark"] input[type="text"]{background:var(--surface);color:var(--ink)}
+
+/* ---- Moneyball (League Analytics) */
+.mb{margin-top:46px}
+.mb-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+.mb .db-kpi b{font-size:26px}
+.mb .db-kpi{height:128px;justify-content:flex-start;padding-top:16px}
+.mb .db-kpi small{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;line-height:1.35}
