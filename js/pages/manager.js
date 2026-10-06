@@ -171,6 +171,7 @@
             <div class="card-row">${card1}${card2}${card3}${card4}</div>
             ${band}
             ${await featuredPlayers()}
+            ${await scoreRanks()}
             <section class="split-section">
                 <div><div class="eyebrow">${CAREER ? `Career · last ${Math.min(17, all.length)} games` : `${season} season`}</div><h2 class="section-title">Schedule &amp;<br>Results</h2>
                     <p class="section-copy">Regular season and playoffs. Dates are the Thursday each NFL week kicks off.</p>
@@ -179,6 +180,46 @@
             </section></div>`;
     }
 
+
+    // ============================================================ WEEKLY SCORE RANKS (this manager's quads and rank spread vs the field)
+    async function scoreRanks() {
+        const rows = await GT.query(`SELECT m.season, m.week, t.owner_id AS id, o.display_name AS name, t.score_rank_on_week AS rank,
+                                            t.team_score AS pf, t.opponent_score AS pa
+                                     FROM matchup_team_stats t JOIN matchups m ON m.game_id = t.game_id JOIN owners o ON o.owner_id = t.owner_id
+                                     WHERE m.season_period = 'Regular' AND t.team_score IS NOT NULL AND t.opponent_score IS NOT NULL
+                                       AND ($s = 0 OR m.season = $s)`, { $s: season });
+        const lines = SR.managers(SR.teamWeeks(rows));
+        const me = lines.find(l => l.id === mgr.id);
+        if (!me) return '';
+        const ranked = lines.filter(l => l.ranked);
+        const of = me.ranked ? ` of ${ranked.length}` : ' (unranked: under a full season)';
+        const avgPos = me.ranked ? 1 + ranked.filter(l => l.avgRank < me.avgRank).length : null;
+        const tile = (v, l, s) => `<div class="stat-tile"><div class="v">${v}</div><div class="l">${l}</div><div class="s">${s}</div></div>`;
+        const quad = (q, k) => {
+            const lg = lines.leagueQuads[k].pct, p = q.g ? q.w / q.g : null;
+            const better = p != null && lg != null && p >= lg;
+            return `<div class="sr-quad" style="--c:${p == null ? 'var(--line)' : better ? 'var(--accent)' : 'var(--danger)'}">
+                <span>Score ranked ${SR.QUADS[k]}</span><b>${SR.pct3(p)}</b>
+                <small>${q.g ? `${q.w}-${q.g - q.w} in ${q.g} week${q.g === 1 ? '' : 's'}` : 'no weeks'} · league ${SR.pct3(lg)}</small></div>`;
+        };
+        return `<section class="an-section">
+            <div class="panel-head"><div><div class="eyebrow">${CAREER ? `Career · ${span}` : `${season} regular season`}</div><h2 class="section-title">Weekly Score Ranks</h2>
+                <p class="section-copy" style="max-width:none">Where ${esc(mgr.name)}'s score landed against the whole league each week (1 = highest), and how often it won from there.</p></div>
+                <a class="card-link" href="${url(`pages/stats.html${CAREER ? '' : `?season=${season}`}#moneyball`)}">Every manager in Moneyball</a></div>
+            <div class="stat-tiles tiles-6" style="grid-template-columns:repeat(6,minmax(0,1fr))">
+                ${tile(me.avgRank.toFixed(1), 'Avg weekly rank', avgPos ? `${ord(avgPos)}${of}` : of.trim())}
+                ${tile(SR.pct3(me.allPlay), 'All-play PCT', me.pos ? `${ord(me.pos)}${of}` : of.trim())}
+                ${tile(`${me.luck >= 0 ? '+' : ''}${me.luck.toFixed(1)}`, 'Luck', `${SR.pct3(me.winPct)} actual vs ${SR.pct3(me.allPlay)} all-play`)}
+                ${tile(me.top1, 'Top score', 'weeks with the high score')}
+                ${tile(me.top3, 'Top 3', 'weeks in the top 3')}
+                ${tile(me.bottom3, 'Bottom 3', `${me.last} week${me.last === 1 ? '' : 's'} dead last`)}
+            </div>
+            <div class="sr-quads" style="margin-top:12px">${me.quads.map(quad).join('')}</div>
+            <div class="panel" style="margin-top:12px"><h3 class="panel-title" style="margin-bottom:12px">Score Rank Spread</h3>
+                ${SR.matrix(lines, { focus: mgr.id, only: [mgr.id] })}
+                <p class="an-note">Weeks ${esc(mgr.name)} finished at each weekly score rank over ${me.games} regular-season games${CAREER ? ' (every season)' : ''}. Shading is on the same scale as the league matrix in Moneyball.</p></div>
+        </section>`;
+    }
 
     // ============================================================ FEATURED PLAYERS (this manager's season)
     async function featuredPlayers() {

@@ -139,6 +139,13 @@ window.MONEYBALL = (() => {
             ${A.wkQuads.map(q => `<tr><td><b>${q.label}</b></td><td class="num">${q.n}</td><td class="num"><b>${pct(q.win, 1)}</b></td><td class="num">${pts(q.med)}</td>
                 <td class="num">${pts(q.lo)}–${pts(q.hi)}</td></tr>`).join('')}</tbody></table></div>`;
 
+        // manager quads + score rank matrix (same method as the NEW site's Weekly Score Ranks page)
+        const lines = SR.managers(SR.teamWeeks(A.games.map(g => ({ season: g.season, week: g.week, id: g.id, name: g.mgr, rank: g.wkRank, pf: g.pf, pa: g.pa }))));
+        const mlink = n => GT.managerLink(n, scope === 'completed' || scope === 'all' ? 'career' : scope);
+        host.querySelector('#mb-mgrquads').innerHTML = lines.length ? SR.table(lines, { link: mlink }) : '<p class="muted">No games in this scope.</p>';
+        host.querySelector('#mb-matrix').innerHTML = lines.length ? SR.matrix(lines) : '';
+        host.querySelector('#mb-matrix-sub').textContent = `Weeks each manager finished at each weekly score rank · 1 = highest score of the week · managers under ${lines.min} games are listed unranked (faded)`;
+
         const c = { accent: SITE.color('accent'), red: SITE.color('danger'), ink: SITE.color('ink'), muted: SITE.color('muted'), grid: SITE.color('track'), line: SITE.color('line-strong') };
         const mount = (id, option) => { const el = host.querySelector(`#${id}`); const ch = echarts.init(el); ch.setOption({ textStyle: { fontFamily: 'Inter, sans-serif' }, animationDuration: 300, ...option }); charts.push(ch); };
         const axis = { axisLabel: { color: c.muted }, splitLine: { lineStyle: { color: c.grid } } };
@@ -209,6 +216,8 @@ window.MONEYBALL = (() => {
                 <section class="db-tile s5"><header><h3>Scoring by Season</h3><p>Weekly scores each year: middle half (box), full range (whiskers) and average (line)</p></header><div class="db-chart" id="mb-season"></div></section>
                 <section class="db-tile s12"><header><h3>Quads: Final Standings</h3><p>Teams grouped by where they finished the regular season (record, then points for): 1–4, 5–8, 9–12, 13–16</p></header><div id="mb-quads"></div></section>
                 <section class="db-tile s12"><header><h3>Quads: Weekly Score Rank</h3><p>Every week's scores ranked 1–16: how often each group won its game, and what it scored</p></header><div id="mb-wkquads"></div></section>
+                <section class="db-tile s12"><header><h3>Manager Quads: Weekly Scoring Position</h3><p>Every manager by all-play %. PCT 1-4 etc. = win % in weeks their score ranked in that quad. Luck = wins minus what all-play predicts.</p></header><div id="mb-mgrquads"></div></section>
+                <section class="db-tile s12"><header><h3>Score Rank Matrix</h3><p id="mb-matrix-sub">Weeks each manager finished at each weekly score rank · 1 = highest score of the week</p></header><div id="mb-matrix"></div></section>
             </div>`;
         host.querySelector('#mb-scope').addEventListener('change', e => { scope = e.target.value; render(); });
         render();
