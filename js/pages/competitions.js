@@ -127,6 +127,7 @@
         const feature = wk.slice().sort((x, y) => (y.hs + y.aws) - (x.hs + x.aws))[0];
         const first = wk[0];
         SITE.hero({ title: `${season} Season`, image: 'background-7.png',
+                    tools: `<label class="hero-season"><span>Season</span>${seasonSelect()}</label>`,
                     meta: [`Grass Touchers FFL · ${picture.standings.length} managers`, `Latest: ${GT.periodLabel(first ? first.period : 'Regular', lastWeek || 0)}`,
                            champs.find(c => c.s === season) ? `Champion: ${esc(champs.find(c => c.s === season).name)}` : 'Champion: to be decided'] });
         const d = feature ? GT.weekDate(b, season, feature.week) : null;
@@ -137,7 +138,7 @@
                     <ul class="mini-list score-list">${wk.slice(0, 8).map(g => `<li class="row-link" data-href="${GT.gameHref(g.id)}" title="Open game center"><img src="${GT.logo(g.hs >= g.aws ? g.home : g.away)}" alt="">
                         <span>${GT.managerLink(g.home, season)} v ${GT.managerLink(g.away, season)}</span><span class="res">${Math.round(g.hs)}-${Math.round(g.aws)}</span></li>`).join('')}</ul>
                     </div><a class="card-link" href="${url(`pages/past-seasons/schedule.html?season=${season}&week=${lastWeek}`)}">Full schedule</a></div>
-                <div class="card"><div class="card-head"><span class="card-title">League Stats</span>${seasonSelect('card-select')}</div><div class="card-body">
+                <div class="card"><div class="card-head"><span class="card-title">League Stats</span></div><div class="card-body">
                     <ul class="kv"><li><span>Games played</span><b>${games.length}</b></li>
                         <li><span>Average score</span><b>${GT.pts(avg)}</b></li>
                         <li><span>High score</span><b>${hi.v >= 0 ? GT.pts(hi.v) : '-'}</b></li>

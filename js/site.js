@@ -40,7 +40,10 @@
             { key: 'schedule', label: 'Schedule', href: 'pages/past-seasons/schedule.html' },
             { key: 'standings', label: 'Standings', href: 'pages/past-seasons/standings.html' },
             { key: 'playoff-bracket', label: 'Playoff Bracket', href: 'pages/past-seasons/playoff-bracket.html' },
-            { key: 'managers', label: 'Managers', href: 'pages/past-seasons/managers.html' }
+            { key: 'managers', label: 'Managers', href: 'pages/past-seasons/managers.html' },
+            { key: 'trades', label: 'Trades', href: 'pages/past-seasons/trades.html' },
+            { key: 'free-agency', label: 'Free Agency', href: 'pages/past-seasons/free-agency.html' },
+            { key: 'draft', label: 'Draft Grades', href: 'pages/past-seasons/draft.html' }
         ] }
     ];
     const NAV = [{ key: 'feed', label: 'Stats', href: 'pages/stats.html' }, ...SITE_MAP.filter(g => !g.hidden).map(({ key, label, href }) => ({ key, label, href }))];

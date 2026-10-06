@@ -40,7 +40,14 @@
     // roster slots for the season (closest earlier season if the exact one is missing)
     const ruleRow = rules.filter(r => r.Season <= game.season).sort((x, y) => y.Season - x.Season)[0] || rules[0] || {};
     const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'D/ST', 'P', 'HC'];
-    const slots = SLOT_ORDER.flatMap(s => Array(Number(ruleRow[s]) || 0).fill(s));
+    // never fewer rows than a team actually started in a slot (a stale rules row once hid every 2026 HC)
+    const started = {};
+    [homeR, awayR].forEach(r => {
+        const c = {};
+        r.forEach(p => { if (SLOT_ORDER.includes(p.slotPosition)) c[p.slotPosition] = (c[p.slotPosition] || 0) + 1; });
+        Object.entries(c).forEach(([s, n]) => { started[s] = Math.max(started[s] || 0, n); });
+    });
+    const slots = SLOT_ORDER.flatMap(s => Array(Math.max(Number(ruleRow[s]) || 0, started[s] || 0)).fill(s));
     const benchSlots = Number(ruleRow.BE) || 0, irSlots = Number(ruleRow.IR) || 0;
 
     // ---------------------------------------------------------------- shared helpers
