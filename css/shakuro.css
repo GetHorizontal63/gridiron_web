@@ -268,7 +268,7 @@ body[data-section="players"] .card-row{margin-top:-70px}
 /* Tables never resize with their content: fixed layout (widths come from each table's <colgroup>),
    one line per cell (overflow gets an ellipsis) and a fixed row height. */
 .data-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;table-layout:fixed}
-.data-table th{font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 10px;height:36px;border-bottom:2px solid var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.data-table th{font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 10px 4px;height:36px;border-bottom:2px solid var(--ink);vertical-align:bottom;line-height:1.15;white-space:normal;overflow-wrap:break-word;overflow:hidden}   /* long headers wrap to a second line inside the same fixed height */
 .data-table td{padding:0 10px;height:40px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .data-table tbody tr:hover td{background:var(--hover)}
 .data-table th.num,.data-table td.num{text-align:right}
@@ -944,7 +944,7 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 .dg-card p em{font-style:normal;color:var(--muted)}
 .dg-board-wrap{overflow-x:auto}
 .dg-board{table-layout:fixed;border-collapse:separate;border-spacing:3px;font-size:11px}
-.dg-board th{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);height:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;padding:0 4px}
+.dg-board th{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);height:30px;line-height:1.15;vertical-align:bottom;white-space:normal;overflow-wrap:break-word;overflow:hidden;text-align:left;padding:0 4px 3px}
 .dg-board th.rd{text-align:center}
 .dg-board td{height:44px;padding:0;vertical-align:top}
 .dg-cell{display:block;height:44px;padding:4px 6px 0 7px;border-left:4px solid var(--c, var(--line));background:var(--surface-2);cursor:pointer;overflow:hidden}
