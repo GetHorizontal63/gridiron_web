@@ -1,8 +1,8 @@
 /* League data for the Shakuro Style pages (reads data/league.db through league-db.js). */
 (function () {
     const q = (sql, params) => LeagueDb.query(sql, params);
-    const LOGOS = new Set(['anthony', 'brennan', 'caty', 'cubby', 'devin', 'gabe', 'jeffrey', 'jon',
-                           'melanie', 'patric', 'peter', 'sam', 'tucker']);
+    const LOGOS = new Set(['anthony', 'armando', 'blake', 'brennan', 'caty', 'cubby', 'devin', 'gabe', 'jack', 'jason', 'jeffrey',
+                           'jon', 'justin', 'melanie', 'omar', 'patric', 'peter', 'sam', 'tucker']);
     const PERIOD = {
         Regular: 'Regular', 'Post-WC': 'Play-In', 'Post-WB': 'Playoffs', Championship: 'Championship',
         'Post-LB': 'Gulag', 'Post-LP': 'Gulag Play-In', Chumpionship: 'Chumpionship'

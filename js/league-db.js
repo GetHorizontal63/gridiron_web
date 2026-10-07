@@ -177,9 +177,9 @@
         },
         teamAbbreviations: async () => {
             const logoByOwner = {
-                Anthony: 'anthony', Brennan: 'brennan', Caty: 'caty', Cubby: 'cubby', Devin: 'devin',
-                Gabe: 'gabe', Jeffrey: 'jeffrey', Jon: 'jon', Melanie: 'melanie',
-                Patric: 'patric', Peter: 'peter', Sam: 'sam', Tucker: 'tucker'
+                Anthony: 'anthony', Armando: 'armando', Blake: 'blake', Brennan: 'brennan', Caty: 'caty', Cubby: 'cubby',
+                Devin: 'devin', Gabe: 'gabe', Jack: 'jack', Jason: 'jason', Jeffrey: 'jeffrey', Jon: 'jon', Justin: 'justin',
+                Melanie: 'melanie', Omar: 'omar', Patric: 'patric', Peter: 'peter', Sam: 'sam', Tucker: 'tucker'
             };
             const owners = await query(`
                 SELECT o.owner_id, o.display_name,
