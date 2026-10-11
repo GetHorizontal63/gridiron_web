@@ -83,7 +83,11 @@
         FROM matchups m JOIN matchup_team_stats h ON h.game_id = m.game_id AND h.owner_id < h.opponent_owner_id
         JOIN owners a ON a.owner_id = h.owner_id JOIN owners o ON o.owner_id = h.opponent_owner_id
         WHERE m.season = $s ORDER BY m.week, m.game_id`, { $s: season });
-    const weeks = [...new Set(games.map(g => g.week))];
+    // the week in progress (live scores from the last data update): shown with the week's matchups, never counted
+    // in standings, records or the bracket outlook, which all use the final games above
+    const live = await GT.liveGames(season);
+    const all = games.concat(live);
+    const weeks = [...new Set(all.map(g => g.week))];
     const lastWeek = weeks[weeks.length - 1];
     const picture = await GT.standings(season);
     const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
@@ -120,7 +124,8 @@
         const champs = Object.entries(b.finish).filter(([, p]) => p === 1)
             .map(([k]) => { const [s, id] = k.split('-'); return { s: +s, name: b.byId[id] ? b.byId[id].name : '' }; })
             .sort((x, y) => y.s - x.s);
-        const wk = games.filter(g => g.week === lastWeek);
+        const wk = all.filter(g => g.week === lastWeek);
+        const liveWk = wk.some(g => g.live);
         const allScores = games.flatMap(g => [{ n: g.home, v: g.hs, w: g.week }, { n: g.away, v: g.aws, w: g.week }]).filter(x => x.v != null);
         const hi = allScores.reduce((m, x) => x.v > m.v ? x : m, { v: -1 });
         const avg = allScores.reduce((a, x) => a + x.v, 0) / (allScores.length || 1);
@@ -134,9 +139,9 @@
         content.innerHTML = `<div class="wrap page-pad">
             <div class="card-row">
                 ${GT.divisionCards(picture, season)}
-                <div class="card"><div class="card-head"><span class="card-title">Week ${lastWeek || '-'} Scores</span></div><div class="card-body">
+                <div class="card"><div class="card-head"><span class="card-title">Week ${lastWeek || '-'} Scores${liveWk ? ' · Live' : ''}</span></div><div class="card-body">
                     <ul class="mini-list score-list">${wk.slice(0, 8).map(g => `<li class="row-link" data-href="${GT.gameHref(g.id)}" title="Open game center"><img src="${GT.logo(g.hs >= g.aws ? g.home : g.away)}" alt="">
-                        <span>${GT.managerLink(g.home, season)} v ${GT.managerLink(g.away, season)}</span><span class="res">${Math.round(g.hs)}-${Math.round(g.aws)}</span></li>`).join('')}</ul>
+                        <span>${GT.managerLink(g.home, season)} v ${GT.managerLink(g.away, season)}</span><span class="res">${Math.round(g.hs)}–${Math.round(g.aws)}</span></li>`).join('')}</ul>
                     </div><a class="card-link" href="${url(`pages/past-seasons/schedule.html?season=${season}&week=${lastWeek}`)}">Full schedule</a></div>
                 <div class="card"><div class="card-head"><span class="card-title">League Stats</span></div><div class="card-body">
                     <ul class="kv"><li><span>Games played</span><b>${games.length}</b></li>
@@ -148,7 +153,7 @@
                     </div><a class="card-link" href="${url('pages/stories/features.html')}">League records</a></div>
             </div>
             ${feature ? `<section class="game-band">
-                <div class="band-label"><span class="pill pill-dark">Game of the week</span>${esc(GT.periodLabel(feature.period, feature.week))}${d ? ' · ' + GT.fmtDate(d) : ''}</div>
+                <div class="band-label"><span class="pill ${feature.live ? 'pill-accent' : 'pill-dark'}">${feature.live ? 'Live · game of the week' : 'Game of the week'}</span>${esc(GT.periodLabel(feature.period, feature.week))}${d ? ' · ' + GT.fmtDate(d) : ''}</div>
                 <div class="scoreboard">
                     <div class="sb-team"><div class="sb-logo"><img src="${GT.logo(feature.home)}" alt=""></div>
                         <div class="sb-name">${esc(GT.teamName(b, feature.home, season))}<small>${GT.managerLink(feature.home, season)}</small></div></div>
@@ -157,16 +162,16 @@
                     <div class="sb-team right"><div class="sb-name">${esc(GT.teamName(b, feature.away, season))}<small>${GT.managerLink(feature.away, season)}</small></div>
                         <div class="sb-logo"><img src="${GT.logo(feature.away)}" alt=""></div></div>
                 </div>
-                <div class="band-foot"><div><h4>${GT.pts(feature.hs + feature.aws)} combined points</h4><p>Highest-scoring game of week ${feature.week}</p></div>
+                <div class="band-foot"><div><h4>${GT.pts(feature.hs + feature.aws)} combined points</h4><p>${feature.live ? `Highest-scoring game of week ${feature.week} so far · ${esc(GT.updatedText(feature.updated))}` : `Highest-scoring game of week ${feature.week}`}</p></div>
                     <div class="band-actions"><a class="btn btn-accent" href="${url(`pages/past-seasons/game-center.html?id=${feature.id}`)}">Open game center</a></div></div>
             </section>` : ''}
             <section class="split-section">
                 <div><div class="eyebrow">${season} season · week ${lastWeek || '-'}</div><h2 class="section-title">This Week's<br>Results</h2>
-                    <p class="section-copy">Every matchup from the latest week. Winners in bold.</p><div class="section-tools"></div></div>
+                    <p class="section-copy">${liveWk ? `Week ${lastWeek} is in progress: scores so far, ${esc(GT.updatedText(wk[0].updated))}. Final once the week's last game ends.` : 'Every matchup from the latest week. Winners in bold.'}</p><div class="section-tools"></div></div>
                 <ul class="list-rows">${wk.map(g => `<li class="row-link" data-href="${GT.gameHref(g.id)}" title="Open game center"><img src="${GT.logo(g.hs >= g.aws ? g.home : g.away)}" alt="">
                     <div class="main"><b>${GT.managerLink(g.home, season)}</b> ${GT.pts(g.hs)} <span class="sub">vs</span> ${GT.pts(g.aws)} <b>${GT.managerLink(g.away, season)}</b></div>
                     <div class="date sub">${GT.fmtDate(GT.weekDate(b, season, g.week))}</div><div class="time sub">Margin ${GT.pts(Math.abs(g.hs - g.aws))}</div>
-                    <div class="tag">${esc(GT.periodLabel(g.period, g.week))}</div></li>`).join('') || '<li class="muted">No games yet.</li>'}</ul>
+                    <div class="tag">${g.live ? 'Live' : esc(GT.periodLabel(g.period, g.week))}</div></li>`).join('') || '<li class="muted">No games yet.</li>'}</ul>
             </section>
             <section class="an-section" id="season-quads"></section></div>`;
         bindSeason();
@@ -197,7 +202,7 @@
         const week = Number(param('week')) || lastWeek;
         SITE.hero({ title: `${season} Schedule`, size: 'short', dots: false, image: 'background-9.png',
                     meta: [`${weeks.length} weeks · ${games.length} games`] });
-        const wk = games.filter(g => g.week === week);
+        const wk = all.filter(g => g.week === week);
         // per manager this week: lineup projection, top starter, and score rank (all from the saved lineups / matchup stats)
         const [lineups, ranks] = await Promise.all([
             GT.query(`SELECT o.display_name AS owner, p.player_id AS pid, p.name, p.position AS pos, frp.actual_points AS pts, frp.projected_points AS proj
@@ -216,7 +221,11 @@
             const before = games.filter(g => g.week < week && g.period === 'Regular' && (g.home === name || g.away === name) && g.hs != null);
             const w = before.filter(g => (g.home === name ? g.hs > g.aws : g.aws > g.hs)).length;
             const l = before.filter(g => (g.home === name ? g.hs < g.aws : g.aws < g.hs)).length;
-            return { top, proj, rec: `${w}-${l}`, rank: (ranks.find(r => r.owner === name) || {}).rank };
+            // a live week has no recorded ranks yet: rank on the score so far
+            const game = wk.find(g => g.home === name || g.away === name);
+            const soFar = game && game.live ? (game.home === name ? game.hs : game.aws) : null;
+            const liveRank = soFar == null ? null : 1 + wk.flatMap(g => [g.hs, g.aws]).filter(v => v > soFar).length;
+            return { top, proj, rec: `${w}-${l}`, rank: (ranks.find(r => r.owner === name) || {}).rank || liveRank };
         };
         const teamRow = (name, score, won, x) => `<div class="sc-team${won ? ' won' : ''}">
             <img src="${GT.logo(name)}" alt="">
@@ -227,12 +236,12 @@
             <div class="sc-score">${score == null ? '-' : GT.pts(score)}</div></div>`;
         const card = g => {
             const h = info(g.home), a = info(g.away);
-            const done = g.hs != null && g.aws != null;
+            const done = g.hs != null && g.aws != null && !g.live;
             const homeWon = done && g.hs > g.aws, awayWon = done && g.aws > g.hs;
             const favHome = h.proj && a.proj ? h.proj >= a.proj : null;
             const upset = done && favHome != null && ((favHome && awayWon) || (!favHome && homeWon));
             return `<div class="sc-card row-link" data-href="${GT.gameHref(g.id)}" title="Open game center">
-                <div class="sc-head"><span class="pill ${done ? 'pill-dark' : 'pill-accent'}">${done ? 'Final' : 'Live'}</span>
+                <div class="sc-head"><span class="pill ${done ? 'pill-dark' : 'pill-accent'}">${done ? 'Final' : 'Live'}</span>${g.live ? `<span>${esc(GT.updatedText(g.updated))}</span>` : ''}
                     <span>${esc(GT.periodLabel(g.period, g.week))}</span>${done ? `<span>Margin ${GT.pts(Math.abs(g.hs - g.aws))}</span>` : ''}
                     ${upset ? '<span class="sc-upset">Upset</span>' : ''}<a class="sc-open" href="${GT.gameHref(g.id)}">Game center →</a></div>
                 ${teamRow(g.home, g.hs, homeWon, h)}${teamRow(g.away, g.aws, awayWon, a)}</div>`;

@@ -7,12 +7,13 @@
     const b = await GT.load();
     const season = Number(param('season')) || b.season;
 
-    const games = await GT.query(`
+    const finals = await GT.query(`
         SELECT m.game_id AS id, m.week, m.season_period AS period, h.owner_id AS hid, a.display_name AS home, h.team_score AS hs,
                h.opponent_owner_id AS aid, o.display_name AS away, h.opponent_score AS aws
         FROM matchups m JOIN matchup_team_stats h ON h.game_id = m.game_id AND h.owner_id < h.opponent_owner_id
         JOIN owners a ON a.owner_id = h.owner_id JOIN owners o ON o.owner_id = h.opponent_owner_id
         WHERE m.season = $s ORDER BY m.week, m.game_id`, { $s: season });
+    const games = finals.concat(await GT.liveGames(season));          // + the week in progress (live, from the last update)
     const weeks = [...new Set(games.map(g => g.week))];
     const latest = weeks[weeks.length - 1];
     let week = Number(param('week')) || latest;
@@ -28,7 +29,7 @@
     const [pickedStarters, latestStarters] = await Promise.all([startersFor(week), week === latest ? null : startersFor(latest)]);
     const recentStarters = latestStarters || pickedStarters;
     const topIn = (list, id) => list.find(t => t.id === id);
-    const final = g => g.hs != null && g.aws != null;
+    const final = g => !g.live && g.hs != null && g.aws != null;
     const mHref = id => url(`pages/managers/overview.html?m=${id}&season=${season}`);
     const weekLabel = w => { const g = games.find(x => x.week === w); return GT.periodLabel(g ? g.period : 'Regular', w); };
 
@@ -37,7 +38,7 @@
     const prevW = weeks[weeks.indexOf(week) - 1], nextW = weeks[weeks.indexOf(week) + 1];
     const wkLink = w => `?season=${season}&week=${w}`;
     const card = g => {
-        const hw = g.hs > g.aws, aw = g.aws > g.hs;
+        const hw = final(g) && g.hs > g.aws, aw = final(g) && g.aws > g.hs;
         const top = [topIn(pickedStarters, g.hid), topIn(pickedStarters, g.aid)].filter(Boolean).sort((x, y) => y.pts - x.pts)[0];
         const row = (id, name, score, won) => `<div class="gc-team${won ? ' won' : ''}">
             <img src="${GT.logo(name)}" alt=""><a href="${mHref(id)}" class="gc-name">${esc(name)}</a>
@@ -54,13 +55,14 @@
             ${prevW ? `<a class="gc-arrow" href="${wkLink(prevW)}" aria-label="Previous week">‹</a><a class="gc-week" href="${wkLink(prevW)}">Week ${prevW}</a>` : '<span class="gc-arrow off">‹</span>'}
             <span class="gc-week on">Week ${week}</span>
             ${nextW ? `<a class="gc-week" href="${wkLink(nextW)}">Week ${nextW}</a><a class="gc-arrow" href="${wkLink(nextW)}" aria-label="Next week">›</a>` : '<span class="gc-arrow off">›</span>'}
-            <span class="gc-season">${season} season · ${wk.length} games</span>
+            <span class="gc-season">${wk.some(g => g.live) ? `Live · ${esc(GT.updatedText(wk[0].updated))}` : `${season} season · ${wk.length} games`}</span>
         </div>
         <div class="gc-cards scroll-x">${wk.map(card).join('')}</div>
     </div></section>`;
 
     // ---------------------------------------------------------------- featured games, most recent week
-    const recent = games.filter(g => g.week === latest && final(g));
+    const latestFinal = Math.max(0, ...games.filter(final).map(g => g.week));       // featured games come from the last finished week
+    const recent = games.filter(g => g.week === latestFinal && final(g));
     const margin = g => Math.abs(g.hs - g.aws);
     const pick = (list, score) => list.slice().sort((x, y) => score(y) - score(x))[0];
     const SLIDES = recent.length ? [

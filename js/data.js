@@ -111,6 +111,19 @@
 
     const standings = season => LeagueDb.playoffPicture(Number(season));
 
+    // The week in progress, as of the last data update (live_matchups: never counted in standings or records).
+    // Same shape as the pages' game rows, plus live: true, projections and when it was updated. Empty when no week is live
+    // (or on a database built before live scores existed).
+    const liveGames = season => q(`
+        SELECT m.game_id AS id, m.week, 'Regular' AS period, h.owner_id AS hid, a.display_name AS home, h.team_score AS hs,
+               h.opponent_owner_id AS aid, o.display_name AS away, h.opponent_score AS aws,
+               h.team_projected AS hp, h.opponent_projected AS ap, m.updated_at AS updated
+        FROM live_matchups m JOIN live_matchup_team_stats h ON h.game_id = m.game_id AND h.owner_id < h.opponent_owner_id
+        JOIN owners a ON a.owner_id = h.owner_id JOIN owners o ON o.owner_id = h.opponent_owner_id
+        WHERE m.season = $s ORDER BY m.week, m.game_id`, { $s: Number(season) })
+        .then(rows => rows.map(r => ({ ...r, live: true }))).catch(() => []);
+    const updatedText = iso => { const d = iso ? new Date(iso) : null; return d && !isNaN(d) ? `updated ${d.toLocaleDateString('en-US', { weekday: 'short' })} ${fmtTime(d)}` : ''; };
+
     // link to a manager's page for a given season
     const managerHref = (name, season) => {
         const o = base && byNameSync[String(name).toLowerCase()];
@@ -149,5 +162,6 @@
     }
 
     window.GT = { load, logo, teamName, manager, games, result, record, sum, weekDate, fmtDate, fmtTime,
-                  periodLabel, pts, draft, roster, latestRosterIds, slotSort, isStarter, standings, divisionCards, managerHref, managerLink, gameHref, query: q, PERIOD };
+                  periodLabel, pts, draft, roster, latestRosterIds, slotSort, isStarter, standings, divisionCards, managerHref, managerLink, gameHref, query: q, PERIOD,
+                  liveGames, updatedText };
 })();

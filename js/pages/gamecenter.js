@@ -59,17 +59,20 @@
     const mHref = n => url(`pages/managers/overview.html?m=${(b.byName[n.toLowerCase()] || {}).id || n}`);
 
     // ---------------------------------------------------------------- header
-    const homeWon = game.hs > game.as, awayWon = game.as > game.hs;
+    const LIVE = !!g0.Live;                       // the week in progress: score so far, from the last data update
+    const homeWon = !LIVE && game.hs > game.as, awayWon = !LIVE && game.as > game.hs;
+    const status = LIVE ? `Live · ${GT.updatedText(g0.Updated)}` : 'Final';
     SITE.subHeader({
         crumbs: [['Past Seasons', url('pages/past-seasons/index.html')],
                  [`${game.season}`, url(`pages/past-seasons/overview.html?season=${game.season}`)], [`${label} Game Center`]],
         tabs: [{ label: 'Matchup', href: '#matchup', active: true }, { label: 'Team Rosters', href: '#rosters' }, { label: 'Roster Analysis', href: '#analysis' }]
     });
     SITE.hero({ title: `${game.home} vs ${game.away}`, size: 'short', dots: false, image: 'background-10.png',
-                meta: [`${game.season} · ${esc(label)}`, `Final · ${f1(game.hs)} - ${f1(game.as)}`] });
+                meta: [`${game.season} · ${esc(label)}`, `${esc(status)} · ${f1(game.hs)} - ${f1(game.as)}`,
+                       ...(LIVE ? [`Projected ${f1(g0['Team Projected'])} - ${f1(g0['Opponent Projected'])} · not final until the week's last game`] : [])] });
     const d = GT.weekDate(b, game.season, game.week);
     const scoreboard = `<section class="game-band" id="matchup" style="margin-top:34px">
-        <div class="band-label"><span class="pill pill-dark">Final</span>${esc(label)}${d ? ' · ' + GT.fmtDate(d) : ''}</div>
+        <div class="band-label"><span class="pill ${LIVE ? 'pill-accent' : 'pill-dark'}">${esc(LIVE ? 'Live' : 'Final')}</span>${esc(label)}${d ? ' · ' + GT.fmtDate(d) : ''}</div>
         <div class="scoreboard">
             <div class="sb-team"><div class="sb-logo"><img src="${GT.logo(game.home)}" alt=""></div>
                 <div class="sb-name"><a href="${mHref(game.home)}">${esc(game.home)}</a><small>${esc(GT.teamName(b, game.home, game.season))}</small></div></div>

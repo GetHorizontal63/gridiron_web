@@ -101,7 +101,7 @@
             JOIN owners opponent ON opponent.owner_id = mts.opponent_owner_id
             ORDER BY m.season, m.week, m.game_id, mts.owner_id
         `),
-        gameById: gameId => query(`
+        gameById: async gameId => (await query(`
             SELECT
                 m.season AS Season,
                 m.week AS Week,
@@ -126,7 +126,17 @@
             JOIN owners opponent ON opponent.owner_id = mts.opponent_owner_id
             WHERE m.game_id = $gameId
             ORDER BY mts.owner_id
-        `, { $gameId: Number(gameId) }),
+        `, { $gameId: Number(gameId) })).concat(await query(`
+            SELECT m.season AS Season, m.week AS Week, 'Regular' AS "Season Period", m.game_id AS "Game ID", NULL AS "League Week",
+                   team.display_name AS Team, opponent.display_name AS Opponent, s.team_score AS "Team Score", s.opponent_score AS "Opponent Score",
+                   ROUND(s.team_score - s.opponent_score, 2) AS "Score Diff", s.bench_score AS "Bench Score", s.opponent_bench_score AS "Opponent Bench Score",
+                   ROUND(s.bench_score - s.opponent_bench_score, 2) AS "Bench Score Diff", NULL AS "Score Rank on Week", NULL AS "Opponent Score Rank on Week",
+                   NULL AS "Division Score Rank on Week", NULL AS "Opponent Division Score Rank on Week",
+                   1 AS "Live", m.updated_at AS "Updated", s.team_projected AS "Team Projected", s.opponent_projected AS "Opponent Projected"
+            FROM live_matchups m JOIN live_matchup_team_stats s ON s.game_id = m.game_id
+            JOIN owners team ON team.owner_id = s.owner_id JOIN owners opponent ON opponent.owner_id = s.opponent_owner_id
+            WHERE m.game_id = $gameId ORDER BY s.owner_id
+        `, { $gameId: Number(gameId) }).catch(() => [])),
         divisions: async () => {
             const data = await query(`
                 SELECT d.season, d.division_name, o.display_name
