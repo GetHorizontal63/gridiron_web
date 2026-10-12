@@ -172,12 +172,71 @@
             ${band}
             ${await featuredPlayers()}
             ${await scoreRanks()}
+            <section class="an-section" id="mgr-stream"></section>
             <section class="split-section">
                 <div><div class="eyebrow">${CAREER ? `Career · last ${Math.min(17, all.length)} games` : `${season} season`}</div><h2 class="section-title">Schedule &amp;<br>Results</h2>
                     <p class="section-copy">Regular season and playoffs. Dates are the Thursday each NFL week kicks off.</p>
                     ${CAREER ? `<a class="card-link" href="${mlink('schedule', '&season=career')}">Every game</a>` : ''}</div>
                 <ul class="list-rows">${(CAREER ? all.slice(-17).reverse() : inSeason).map(resultRow).join('') || '<li class="muted">No games this season.</li>'}</ul>
             </section></div>`;
+        streamTeam();
+    }
+
+    // ============================================================ VS THE STREAM TEAM (could the waiver wire have beaten this manager?)
+    async function streamTeam() {
+        const host = document.getElementById('mgr-stream');
+        if (!host || !window.ST) return;
+        const field = await ST.games(season);
+        const mine = field.filter(g => g.id === mgr.id);
+        if (!mine.length) return;
+        const lines = ST.lines(field);
+        const me = lines.find(l => l.id === mgr.id);
+        const qualified = CAREER ? lines.filter(l => l === me || l.g >= Math.max(...lines.map(x => x.g)) * 0.25) : lines;   // career: skip very short careers
+        const rankOf = k => 1 + qualified.filter(l => l[k].margin > me[k].margin).length;
+        const pct = r => r.pct == null ? '-' : r.pct.toFixed(3).replace(/^0/, '');
+        const sg = v => v == null ? '-' : `${v >= 0 ? '+' : ''}${GT.pts(v)}`;
+        const lost = mine.filter(g => g.pf < g.sp).sort((x, y) => (x.pf - x.sp) - (y.pf - y.sp));
+        const tile = (v, l, s, tip) => `<div class="stat-tile"><div class="v">${v}</div><div class="l" data-tip="${esc(tip)}">${l}</div><div class="s">${s}</div></div>`;
+        const ST_TIP = `The Stream Team: each week, the best legal lineup from players on nobody's roster that week (bench and IR count as taken), picked by ESPN's weekly projections and scored with what those players really scored. It is what a manager streaming the waiver wire on projections alone would have put up. A win = the manager outscored it that week.`, BW_TIP = `The Best Wire: the same free agents, but the lineup is picked with hindsight by what they actually scored. It is the most the waiver wire could have produced that week, a ceiling nobody could have set in advance.`;
+        host.innerHTML = `<div class="panel-head"><div><div class="eyebrow">${CAREER ? `Career · ${span}` : `${season}`} · regular season + playoffs</div><h2 class="section-title">Vs the Stream Team</h2>
+                <p class="section-copy" style="max-width:none">Each week's best lineup from players on nobody's roster: the Stream Team picks it on ESPN's projections, the Best Wire with hindsight.
+                Did ${esc(mgr.name)} outplay what was sitting in free agency?</p></div>
+                <a class="card-link" href="${url(`pages/past-seasons/overview.html?season=${CAREER ? seasons[0] : season}#season-stream`)}">League vs the Stream Team</a></div>
+            <div class="stat-tiles" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+                ${tile(ST.recText(me.vsProj), 'Vs Stream Team', `${pct(me.vsProj)} · ${ord(rankOf('vsProj'))} of ${qualified.length} by margin`, `Weeks won-lost against the Stream Team (regular season and playoffs). ${ST_TIP} The rank compares average margins with every other manager in the same span.`)}
+                ${tile(sg(me.vsProj.margin), 'Avg margin', 'points a week over the Stream Team', 'Average points a week this manager scored over (+) or under (-) the Stream Team.')}
+                ${tile(ST.recText(me.vsBest), 'Vs Best Wire', `${pct(me.vsBest)} · ${ord(rankOf('vsBest'))} of ${qualified.length} by margin`, `Weeks won-lost against the Best Wire. ${BW_TIP}`)}
+                ${tile(sg(me.vsBest.margin), 'Margin vs best', 'points a week vs the hindsight wire', 'Average points a week over (+) or under (-) the Best Wire. Nearly every manager is negative: it is a hindsight ceiling.')}
+                ${tile(lost.length, 'Weeks the wire won', lost[0] ? `worst: ${CAREER ? lost[0].season + ' ' : ''}W${lost[0].week} by ${GT.pts(lost[0].sp - lost[0].pf)}` : 'never lost to it', 'Weeks the Stream Team outscored this manager, and the biggest of those losses.')}
+            </div>
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:6px">${CAREER ? 'Season by Season' : 'Week by Week'}</h3>
+                <p class="muted" style="font-size:11px;margin-bottom:6px">${CAREER ? `Bars = ${esc(mgr.name)} points per game; lines = the Stream Team and Best Wire averages that season` : `Bars = ${esc(mgr.name)}'s score (green beat the Stream Team); lines = the Stream Team and the Best Wire`}</p>
+                <div class="db-chart" id="mgr-stream-chart"></div></div>`;
+        const c = { accent: SITE.color('accent'), red: SITE.color('danger'), muted: SITE.color('muted'), grid: SITE.color('track'), line: SITE.color('line-strong'), ink: SITE.color('ink') };
+        let cats, bars, sp, sb;
+        if (CAREER) {
+            const ss = [...new Set(mine.map(g => g.season))].sort();
+            const of = (s, k) => { const l = mine.filter(g => g.season === s); return +(l.reduce((t, g) => t + g[k], 0) / l.length).toFixed(1); };
+            cats = ss.map(String);
+            bars = ss.map(s => ({ value: of(s, 'pf'), itemStyle: { color: of(s, 'pf') >= of(s, 'sp') ? c.accent : c.line } }));
+            sp = ss.map(s => of(s, 'sp')); sb = ss.map(s => of(s, 'sb'));
+        } else {
+            cats = mine.map(g => g.period === 'Regular' ? `W${g.week}` : `W${g.week}*`);   // * = playoffs
+            bars = mine.map(g => ({ value: g.pf, itemStyle: { color: g.pf >= g.sp ? c.accent : c.red } }));
+            sp = mine.map(g => g.sp); sb = mine.map(g => g.sb);
+        }
+        const chart = echarts.init(document.getElementById('mgr-stream-chart'));
+        chart.setOption({
+            textStyle: { fontFamily: 'Inter, sans-serif' }, grid: { left: 40, right: 14, top: 28, bottom: 26 },
+            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+            tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 } },
+            xAxis: { type: 'category', data: cats, axisLabel: { color: c.muted, fontSize: 10 } },
+            yAxis: { type: 'value', axisLabel: { color: c.muted, fontSize: 10 }, splitLine: { lineStyle: { color: c.grid } } },
+            series: [{ name: mgr.name, type: 'bar', barMaxWidth: 26, data: bars, itemStyle: { color: c.accent } },
+                     { name: 'Stream Team', type: 'line', symbolSize: 6, itemStyle: { color: c.ink }, lineStyle: { color: c.ink, width: 2 }, data: sp },
+                     { name: 'Best Wire', type: 'line', symbolSize: 5, itemStyle: { color: c.red }, lineStyle: { color: c.red, type: 'dashed' }, data: sb }]
+        });
+        window.addEventListener('resize', () => chart.resize());
     }
 
 

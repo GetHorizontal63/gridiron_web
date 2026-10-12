@@ -80,6 +80,7 @@
                     </div><a class="card-link" href="${url(`pages/players/achievements.html?id=${id}`)}">Achievements</a></div>
             </div>
             <section class="an-section" id="analytics"></section>
+            <section class="an-section" id="field"></section>
             <div class="panel" id="seasons" style="margin-top:44px"><div class="panel-head"><h3 class="panel-title">Season by Season</h3><span class="muted">Regular season + playoffs</span></div>
                 <div class="table-scroll"><table class="data-table" style="min-width:760px">${SITE.cols('8%', '13%', '6%', ...cols.map(() => (52 / cols.length).toFixed(2) + '%'), '11%', '10%')}<thead><tr><th>Season</th><th>Team</th><th class="num">G</th>
                     ${cols.map(([h]) => `<th class="num">${h}</th>`).join('')}<th class="num">Fantasy Pts</th><th class="num">Per Game</th></tr></thead><tbody>
@@ -186,6 +187,138 @@
                            { label: `Fantasy points per game, every qualified ${group} ${season === 'career' ? 'over their career' : 'in ' + season}` })}
                 ${AN.legend()}`;
             document.getElementById('an-season').addEventListener('change', e => { season = e.target.value; draw(); });
+        };
+        draw();
+    }
+
+    // ============================================================ AGAINST THE FIELD (weekly scoring vs starters, rostered players, free agents)
+    // Weekly points are ESPN's, scored with the league's rules (league.db player_week_points). Each week a player at the
+    // position is a starter (in a league lineup), rostered (on a league roster, bench included; IR left out) or a free
+    // agent (on nobody's roster). Boom / bust are measured against that position's fantasy starters: a boom beats three
+    // quarters of starter weeks, a bust falls below three quarters of them.
+    async function renderField() {
+        const host = document.getElementById('field');
+        if (!host || !window.echarts) return;
+        const seasonsRows = await GT.query('SELECT season, COUNT(*) AS n FROM player_week_points WHERE player_id = $id AND points IS NOT NULL GROUP BY season ORDER BY season DESC', { $id: Number(id) }).catch(() => []);
+        const seasons = seasonsRows.map(r => r.season);
+        const SMALL = 6;                                   // fewer weeks than this is a small sample
+        if (!seasons.length) { host.remove(); return; }
+        const posRow = await GT.query('SELECT pos FROM player_values WHERE player_id = $id ORDER BY season DESC LIMIT 1', { $id: Number(id) }).catch(() => []);
+        const pos = (posRow[0] || {}).pos || PS.groupOf(p.pos);
+        // the latest season can be only a few weeks old: start on the career view then (the dropdown still offers it)
+        let season = seasonsRows[0].n < SMALL && seasons.length > 1 ? 'career' : seasons[0], chart = null;
+        const q = (s, x) => { if (!s.length) return null; const i = (s.length - 1) * x, lo = Math.floor(i); return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (i - lo); };
+        const meanOf = l => l.length ? l.reduce((t, v) => t + v, 0) / l.length : null;
+        const sdOf = l => { const m = meanOf(l); return l.length > 1 ? Math.sqrt(l.reduce((t, v) => t + (v - m) ** 2, 0) / (l.length - 1)) : null; };
+        const share = (v, field) => field.length ? (field.filter(x => x < v).length + field.filter(x => x === v).length / 2) / field.length : null;
+        const draw = async () => {
+            host.innerHTML = '<div class="loading" style="margin:20px 0">Comparing every week at the position...</div>';
+            const career = season === 'career';
+            const [weeksRows, rosterRows] = await Promise.all([
+                GT.query(`SELECT w.season, w.week, w.player_id AS pid, w.points AS pts FROM player_week_points w
+                          JOIN player_values v ON v.season = w.season AND v.player_id = w.player_id
+                          WHERE ($s = 0 OR w.season = $s) AND v.pos = $pos AND w.points IS NOT NULL`, { $s: career ? 0 : Number(season), $pos: pos }),
+                GT.query(`SELECT fr.season, fr.week, frp.player_id AS pid, frp.slot_position AS slot FROM fantasy_roster_players frp
+                          JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id WHERE ($s = 0 OR fr.season = $s)`, { $s: career ? 0 : Number(season) })
+            ]);
+            const status = {};
+            rosterRows.forEach(r => { const k = `${r.season}|${r.week}|${r.pid}`; if (r.slot === 'IR') { status[k] = status[k] || 'ir'; return; }
+                                      status[k] = r.slot === 'BE' ? (status[k] === 'start' ? 'start' : 'bench') : 'start'; });
+            const tag = r => status[`${r.season}|${r.week}|${r.pid}`] || 'fa';
+            const sorted = l => l.slice().sort((x, y) => x - y);
+            const groups = [
+                { key: 'me', label: p.name, rows: weeksRows.filter(r => String(r.pid) === String(id)) },
+                { key: 'field', label: `Every ${pos}`, rows: weeksRows },
+                { key: 'start', label: 'League starters', rows: weeksRows.filter(r => tag(r) === 'start') },
+                { key: 'roster', label: 'Rostered', rows: weeksRows.filter(r => tag(r) === 'start' || tag(r) === 'bench') },
+                { key: 'fa', label: 'Free agents', rows: weeksRows.filter(r => tag(r) === 'fa') }
+            ].map(g => ({ ...g, v: sorted(g.rows.map(r => r.pts)) }));
+            const me = groups[0], starters = groups[2];
+            if (!me.v.length) { host.innerHTML = ''; return; }
+            const boomAt = q(starters.v, 0.75), bustAt = q(starters.v, 0.25);
+            groups.forEach(g => {
+                g.n = g.v.length; g.avg = meanOf(g.v); g.med = q(g.v, 0.5); g.sd = sdOf(g.v); g.p10 = q(g.v, 0.1); g.p90 = q(g.v, 0.9);
+                g.boom = boomAt == null || !g.n ? null : g.v.filter(x => x >= boomAt).length / g.n;
+                g.bust = bustAt == null || !g.n ? null : g.v.filter(x => x <= bustAt).length / g.n;
+                g.mine = g.key === 'me' ? null : share(me.med, g.v);           // where the player's typical week lands in this group
+            });
+            const meStatus = { start: 0, bench: 0, fa: 0, ir: 0 };
+            me.rows.forEach(r => { meStatus[tag(r)]++; });
+            const f1 = v => v == null || isNaN(v) ? '-' : GT.pts(v);
+            const pc = v => v == null || isNaN(v) ? '-' : `${Math.round(v * 100)}%`;
+            const GROUP_TIP = { me: `Every week ${p.name} recorded a stat in this span.`,
+                                field: `Every week any ${pos} recorded a stat: starters, backups and free agents alike.`,
+                                start: `Weeks a ${pos} was in a league starting lineup (any team).`,
+                                roster: `Weeks a ${pos} was on any league roster, bench included (IR left out).`,
+                                fa: `Weeks a ${pos} was on nobody's league roster: what the waiver wire offered.` };
+            const label = career ? `Career (${seasons[seasons.length - 1]}-${seasons[0]})` : season;
+            host.innerHTML = `<div class="panel-head"><div><div class="eyebrow">${esc(label)} · weekly fantasy points vs every ${esc(pos)}</div><h2 class="section-title">Against the Field</h2>
+                    <p class="section-copy" style="max-width:none">${me.n} week${me.n === 1 ? '' : 's'} played: ${meStatus.start} in a league lineup, ${meStatus.bench} on a bench, ${meStatus.fa} as a free agent${meStatus.ir ? `, ${meStatus.ir} on IR` : ''}.
+                    <span data-tip="Boom and bust are measured against fantasy starters at the position in this span: every week a ${esc(pos)} was in a league starting lineup. A boom beats three quarters of those starter weeks (75th percentile and up); a bust is no better than the worst quarter (25th percentile and down). Everything in between is 'Between'.">Boom = ${f1(boomAt)}+ · bust = ${f1(bustAt)} or less</span>.
+                    ${me.n < SMALL ? `<b>Small sample: only ${me.n} week${me.n === 1 ? '' : 's'}${career ? '' : ` in ${season}`}. Switch to Career for the full picture.</b>` : ''}</p></div>
+                    <select class="select" id="fd-season"><option value="career"${career ? ' selected' : ''}>Career</option>${seasons.map(s => `<option value="${s}"${s === season ? ' selected' : ''}>${s}</option>`).join('')}</select></div>
+                <div class="table-scroll"><table class="data-table" style="min-width:900px">${SITE.cols('19%', '7%', '8%', '8%', '8%', '9%', '9%', '8%', '8%', '16%')}<thead><tr>
+                    <th data-tip="Who is being compared. Hover a group name for who is in it.">Group</th>
+                    <th class="num" data-tip="Weeks with a recorded stat. For a group: every player-week in it, so one player can count many times.">Weeks</th>
+                    <th class="num" data-tip="Average fantasy points per week (ESPN's points, scored with the league's rules).">Avg</th>
+                    <th class="num" data-tip="The middle week: half the weeks scored more, half scored less. Less swayed by one huge game than the average.">Median</th>
+                    <th class="num" data-tip="10th-percentile week: only 1 week in 10 was worse. A dependable low end.">Floor</th>
+                    <th class="num" data-tip="90th-percentile week: only 1 week in 10 was better. A realistic high end.">Ceiling</th>
+                    <th class="num" data-tip="Standard deviation of weekly points. Higher = bigger swings week to week; lower = steadier.">Volatility</th>
+                    <th class="num" data-tip="Share of weeks scoring ${f1(boomAt)} or more: better than three quarters of ${esc(pos)} starter weeks.">Boom</th>
+                    <th class="num" data-tip="Share of weeks scoring ${f1(bustAt)} or less: no better than the worst quarter of ${esc(pos)} starter weeks.">Bust</th>
+                    <th class="num" data-tip="Where this player's median week would land among the group's weeks. 60% = a typical week here beats 60% of that group's weeks.">Typical week beats</th></tr></thead><tbody>
+                ${groups.map(g => `<tr class="${g.key === 'me' ? 'me' : ''}"><td><b data-tip="${esc(GROUP_TIP[g.key])}">${esc(g.label)}</b></td><td class="num">${g.n.toLocaleString()}</td><td class="num">${f1(g.avg)}</td>
+                    <td class="num">${f1(g.med)}</td><td class="num">${f1(g.p10)}</td><td class="num">${f1(g.p90)}</td><td class="num">${f1(g.sd)}</td>
+                    <td class="num win" data-tip="${g.v.filter(x => x >= boomAt).length} of ${g.n} weeks scored ${f1(boomAt)} or more">${pc(g.boom)}</td>
+                    <td class="num loss" data-tip="${g.v.filter(x => x <= bustAt).length} of ${g.n} weeks scored ${f1(bustAt)} or less">${pc(g.bust)}</td>
+                    <td class="num"${g.key === 'me' ? '' : ` data-tip="A ${f1(me.med)}-point week (this player's median) beats ${pc(g.mine)} of the ${g.n.toLocaleString()} weeks in '${esc(g.label)}'"`}>${g.key === 'me' ? '-' : `<b>${pc(g.mine)}</b> of weeks`}</td></tr>`).join('')}</tbody></table></div>
+                <div class="db-grid" style="margin-top:14px">
+                    <section class="db-tile s8"><header><h3 data-tip="How often each weekly score happened, as a smooth curve (a kernel density). A tall narrow peak = consistent; a wide flat curve = boom or bust. The shaded bands are the bust zone (left) and boom zone (right).">Scoring Distribution</h3><p>Share of weeks at each score (smoothed). Dots = ${esc(p.name)}'s weeks. Shaded: bust zone left, boom zone right.</p></header><div class="db-chart" id="fd-curve"></div></section>
+                    <section class="db-tile s4"><header><h3 data-tip="Each bar splits the group's weeks into busts (worst quarter of starter weeks), booms (best quarter) and everything in between.">Boom / Bust Mix</h3><p>Share of weeks that boomed, busted or landed in between</p></header><div class="db-chart" id="fd-mix"></div></section>
+                </div>
+                <p class="an-note">Floor / ceiling = 10th / 90th percentile week. Volatility = standard deviation of weekly points. Floor, ceiling and the curves count every week the player recorded a stat.</p>`;
+            document.getElementById('fd-season').addEventListener('change', e => { season = e.target.value === 'career' ? 'career' : Number(e.target.value); draw(); });
+            // smoothed distribution (Gaussian kernel, Silverman bandwidth), same x grid for every group
+            const all = groups[1].v;
+            const lo = Math.floor(q(all, 0.005) ?? 0), hi = Math.ceil(Math.max(q(all, 0.995) ?? 30, me.v[me.v.length - 1] || 0));
+            const xs = Array.from({ length: 81 }, (_, i) => lo + (hi - lo) * i / 80);
+            const kde = v => {
+                if (v.length < 2) return xs.map(() => 0);
+                const bw = Math.max(0.8, 1.06 * (sdOf(v) || 1) * Math.pow(v.length, -0.2));
+                return xs.map(x => +(v.reduce((t, s) => t + Math.exp(-0.5 * ((x - s) / bw) ** 2), 0) / (v.length * bw * Math.sqrt(2 * Math.PI)) * 100).toFixed(3));
+            };
+            const c = { accent: SITE.color('accent'), red: SITE.color('danger'), ink: SITE.color('ink'), muted: SITE.color('muted'), grid: SITE.color('track'), line: SITE.color('line-strong'), win: SITE.color('win'), loss: SITE.color('loss') };
+            const COL = { me: c.accent, field: c.line, start: c.ink, roster: '#2e86de', fa: '#e67e22' };
+            if (chart) chart.dispose();
+            chart = echarts.init(document.getElementById('fd-curve'));
+            chart.setOption({
+                textStyle: { fontFamily: 'Inter, sans-serif' }, grid: { left: 40, right: 14, top: 30, bottom: 36 },
+                legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+                tooltip: { trigger: 'axis', valueFormatter: v => typeof v === 'number' ? `${v.toFixed(2)}%` : v },
+                xAxis: { type: 'value', min: lo, max: hi, name: 'Fantasy points in a week', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.muted }, axisLabel: { color: c.muted }, splitLine: { show: false } },
+                yAxis: { type: 'value', axisLabel: { color: c.muted, formatter: v => `${v}%` }, splitLine: { lineStyle: { color: c.grid } } },
+                series: [
+                    ...groups.map(g => ({ name: g.label, type: 'line', smooth: true, symbol: 'none', data: xs.map((x, i) => [x, kde(g.v)[i]]),
+                        lineStyle: { color: COL[g.key], width: g.key === 'me' ? 3 : 1.5, type: g.key === 'field' ? 'dashed' : 'solid' }, itemStyle: { color: COL[g.key] },
+                        areaStyle: g.key === 'me' ? { color: c.accent, opacity: 0.12 } : undefined,
+                        markArea: g.key === 'field' && bustAt != null ? { silent: true, data: [[{ xAxis: lo, itemStyle: { color: c.loss, opacity: 0.07 } }, { xAxis: bustAt }],
+                                                                                              [{ xAxis: boomAt, itemStyle: { color: c.win, opacity: 0.07 } }, { xAxis: hi }]] } : undefined })),
+                    { name: `${p.name} weeks`, type: 'scatter', symbolSize: 7, itemStyle: { color: c.accent, borderColor: SITE.color('surface'), borderWidth: 1 },
+                      data: me.v.map(v => [v, 0]), tooltip: { trigger: 'item', formatter: d => `${GT.pts(d.value[0])} pts` } }]
+            });
+            const mix = echarts.init(document.getElementById('fd-mix'));
+            const order = groups.slice().reverse();
+            mix.setOption({
+                textStyle: { fontFamily: 'Inter, sans-serif' }, grid: { left: 108, right: 14, top: 30, bottom: 26 },
+                legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => `${v}%` },
+                xAxis: { type: 'value', max: 100, axisLabel: { color: c.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: c.grid } } },
+                yAxis: { type: 'category', data: order.map(g => g.key === 'me' ? p.name.split(' ').slice(-1)[0] : g.label), axisLabel: { color: c.ink, fontSize: 10 }, axisTick: { show: false } },
+                series: [['Bust', g => g.bust, c.loss], ['Between', g => 1 - (g.bust || 0) - (g.boom || 0), c.line], ['Boom', g => g.boom, c.win]].map(([n, f, col]) => ({
+                    name: n, type: 'bar', stack: 'm', barMaxWidth: 18, itemStyle: { color: col }, data: order.map(g => Math.round((f(g) || 0) * 100)) }))
+            });
+            window.addEventListener('resize', () => { chart.resize(); mix.resize(); });
         };
         draw();
     }
@@ -303,5 +436,5 @@
     }
 
     const drawn = ({ stats, highlights, achievements, 'game-history': gameHistory })[page]();
-    if (page === 'stats') Promise.resolve(drawn).then(renderAnalytics);   // after the page (and its #analytics slot) exists
+    if (page === 'stats') Promise.resolve(drawn).then(() => { renderAnalytics(); renderField(); });   // after the page (and its #analytics slot) exists
 })();

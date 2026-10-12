@@ -173,9 +173,100 @@
                     <div class="date sub">${GT.fmtDate(GT.weekDate(b, season, g.week))}</div><div class="time sub">Margin ${GT.pts(Math.abs(g.hs - g.aws))}</div>
                     <div class="tag">${g.live ? 'Live' : esc(GT.periodLabel(g.period, g.week))}</div></li>`).join('') || '<li class="muted">No games yet.</li>'}</ul>
             </section>
+            <section class="an-section" id="season-stream"></section>
             <section class="an-section" id="season-quads"></section></div>`;
         bindSeason();
+        seasonStream();
         seasonQuads();
+    }
+
+    // the league against the Stream Team: the best lineup each week from free agents alone (regular season and playoffs)
+    async function seasonStream() {
+        const host = document.getElementById('season-stream');
+        if (!host || !window.ST) return;
+        const list = await ST.games(season);
+        if (!list.length) return;
+        const lines = ST.lines(list);
+        const league = ST.rec(list, 'sp'), best = ST.rec(list, 'sb');
+        const wks = [...new Set(list.map(g => g.week))].sort((x, y) => x - y);
+        const byWeek = w => list.filter(g => g.week === w);
+        const wkLabel = w => { const g = byWeek(w)[0]; return g.period === 'Regular' ? `Week ${w}` : `Week ${w} · ${GT.PERIOD[g.period] || g.period}`; };
+        const SHORT = { 'Post-WC': 'Play-in', 'Post-WB': 'Playoffs', Championship: 'Final', 'Post-LB': 'Gulag', 'Post-LP': 'Gulag PI', Chumpionship: 'Chump' };
+        const wkShort = w => { const g = byWeek(w)[0]; return g.period === 'Regular' ? `Wk ${w}` : `Wk ${w} ${SHORT[g.period] || ''}`.trim(); };
+        const post = wks.filter(w => byWeek(w)[0].period !== 'Regular').length;
+        const avg = l => l.reduce((t, g) => t + g.pf, 0) / (l.length || 1);
+        const stAvg = wks.reduce((t, w) => t + byWeek(w)[0].sp, 0) / wks.length;
+        const wireWeek = wks.map(w => ({ w, beat: byWeek(w).filter(g => g.pf > g.sp).length, of: byWeek(w).length, st: byWeek(w)[0].sp }))
+            .sort((x, y) => y.st - x.st)[0];
+        const tile = (v, l, s, tip = '') => `<div class="stat-tile"><div class="v">${v}</div><div class="l"${tip ? ` data-tip="${esc(tip)}"` : ''}>${l}</div><div class="s">${s}</div></div>`;
+        const pct = r => r.pct == null ? '-' : r.pct.toFixed(3).replace(/^0/, '');
+        const sg = v => v == null ? '-' : `${v >= 0 ? '+' : ''}${GT.pts(v)}`;
+        const ST_TIP = `The Stream Team: each week, the best legal lineup from players on nobody\'s roster that week (bench and IR count as taken), picked by ESPN\'s weekly projections and scored with what those players really scored. It is what a manager streaming the waiver wire on projections alone would have put up. A win = the manager outscored it that week.`, BW_TIP = `The Best Wire: the same free agents, but the lineup is picked with hindsight by what they actually scored. It is the most the waiver wire could have produced that week, a ceiling nobody could have set in advance.`;
+        host.innerHTML = `<div class="panel-head"><div><div class="eyebrow">${season} · ${wks.length - post} regular-season week${wks.length - post === 1 ? '' : 's'}${post ? ` + ${post} playoff week${post === 1 ? '' : 's'}` : ''}</div><h2 class="section-title">Vs the Stream Team</h2>
+                <p class="section-copy" style="max-width:none">The Stream Team is the best lineup you could build each week from players on nobody's roster, picked by ESPN's
+                projections and scored with what they really scored. Beat it and you out-managed the waiver wire. The Best Wire is the same idea picked with hindsight: the most the wire could have scored.</p></div></div>
+            <div class="stat-tiles" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+                ${tile(ST.recText(league), 'League vs Stream Team', `${pct(league)} · avg margin ${sg(league.margin)}`, `Every manager's week (regular season and playoffs) compared with that week's Stream Team score, added up. ${ST_TIP} Avg margin = how many points a week the league scored over it.`)}
+                ${tile(GT.pts(stAvg), 'Stream Team per week', `league average ${GT.pts(avg(list))}`, 'The Stream Team\'s average score per week this season, next to the average manager score.')}
+                ${tile(ST.recText(best), 'League vs Best Wire', `${pct(best)} · avg margin ${sg(best.margin)}`, `Every manager's week compared with that week's Best Wire. ${BW_TIP}`)}
+                ${tile(lines.filter(l => l.vsProj.l === 0).length, 'Never lost to it', `of ${lines.length} managers`, 'Managers who outscored the Stream Team every week they played this season, playoffs included.')}
+                ${tile(`W${wireWeek.w}`, 'Stream Team best week', `${GT.pts(wireWeek.st)} pts · beat ${wireWeek.of - wireWeek.beat} of ${wireWeek.of}`, 'The Stream Team\'s highest-scoring week, and how many managers it would have beaten.')}
+            </div>
+            <div class="db-grid" style="margin-top:12px">
+                <section class="db-tile s7 fill"><header><h3 data-tip="Each box is that week's spread of manager scores: the box holds the middle half, the line inside is the median, the whiskers reach the lowest and highest score. Solid green = the Stream Team, dashed red = the Best Wire.">Week by Week</h3><p>Every manager's score (box: middle half, whiskers: range) against the Stream Team and the Best Wire${post ? ' · * = playoffs' : ''}</p></header><div class="db-chart" id="st-chart"></div></section>
+                <section class="db-tile s5"><header><h3 id="st-lu-title" data-tip="${esc(ST_TIP)}">Stream Team</h3><p style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap;justify-content:flex-start">
+                    <span class="seg" id="st-kind"><button data-k="proj" class="on" data-tip="${esc(`Proj: the best free-agent lineup by projection. ${ST_TIP}`)}">Proj</button><button data-k="best" data-tip="${esc(`Best: the best free-agent lineup in hindsight. ${BW_TIP}`)}">Best</button></span>
+                    <select class="select" id="st-week" style="height:28px;padding:4px 26px 4px 8px">${wks.map(w => `<option value="${w}"${w === wks[wks.length - 1] ? ' selected' : ''}>${esc(wkShort(w))}</option>`).join('')}</select></p></header>
+                    <div id="st-lineup"></div></section>
+            </div>
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px" data-tip="Each manager's weeks (regular season and playoffs) against both free-agent lineups, best record against the Stream Team first.">Managers vs the Wire</h3>
+                <div class="table-scroll"><table class="data-table" style="min-width:820px">${SITE.cols('24%', '7%', '9%', '12%', '9%', '12%', '13%', '14%')}<thead><tr>
+                    <th>Manager</th><th class="num" data-tip="Games played, playoffs included.">G</th><th class="num" data-tip="The manager's average score per game.">PF / G</th>
+                    <th class="num" data-tip="${esc(`Weeks won-lost against the Stream Team. ${ST_TIP}`)}">Vs Stream Team</th>
+                    <th class="num" data-tip="Winning percentage against the Stream Team.">PCT</th>
+                    <th class="num" data-tip="Average points a week the manager scored over (+) or under (-) the Stream Team.">Avg margin</th>
+                    <th class="num" data-tip="${esc(`Weeks won-lost against the Best Wire. ${BW_TIP}`)}">Vs Best Wire</th>
+                    <th class="num" data-tip="Average points a week over (+) or under (-) the Best Wire. Almost everyone is negative: it is a hindsight ceiling.">Margin vs best</th></tr></thead><tbody>
+                ${lines.map(l => `<tr><td><span class="team-cell"><img src="${GT.logo(l.name)}" alt="">${GT.managerLink(l.name, season)}</span></td><td class="num">${l.g}</td>
+                    <td class="num">${GT.pts(l.ppg)}</td><td class="num"><b>${ST.recText(l.vsProj)}</b></td><td class="num">${pct(l.vsProj)}</td>
+                    <td class="num ${l.vsProj.margin >= 0 ? 'win' : 'loss'}">${sg(l.vsProj.margin)}</td><td class="num">${ST.recText(l.vsBest)}</td>
+                    <td class="num ${l.vsBest.margin >= 0 ? 'win' : 'loss'}">${sg(l.vsBest.margin)}</td></tr>`).join('')}
+                <tr class="group"><td>League</td><td class="num">${list.length}</td><td class="num">${GT.pts(avg(list))}</td><td class="num">${ST.recText(league)}</td><td class="num">${pct(league)}</td>
+                    <td class="num">${sg(league.margin)}</td><td class="num">${ST.recText(best)}</td><td class="num">${sg(best.margin)}</td></tr></tbody></table></div></div>`;
+        let luWeek = wks[wks.length - 1], luKind = 'proj';      // 'proj' = the Stream Team, 'best' = the Best Wire (hindsight)
+        const showLineup = async () => {
+            const w = luWeek;
+            const lu = await ST.lineup(season, w, luKind);    // Proj = ESPN's projection that week, Pts = what the player scored
+            const title = document.getElementById('st-lu-title');
+            title.textContent = `${wkLabel(w)} ${luKind === 'proj' ? 'Stream Team' : 'Best Wire'} · ${GT.pts(lu.reduce((t, p) => t + (p.pts || 0), 0))} pts`;
+            title.dataset.tip = luKind === 'proj' ? ST_TIP : BW_TIP;
+            document.getElementById('st-lineup').innerHTML = `<table class="data-table">${SITE.cols('14%', '50%', '18%', '18%')}<thead><tr><th data-tip="The lineup slot the player filled (FLEX = best RB, WR or TE left).">Slot</th><th>Player</th><th class="num" data-tip="ESPN's projection for the player that week. The Stream Team picks on this; the Best Wire picks on actual points.">Proj</th><th class="num" data-tip="What the player actually scored that week.">Pts</th></tr></thead><tbody>
+                ${lu.map(p => `<tr><td class="muted">${esc(p.slot)}</td><td>${p.pid > 0 ? `<a href="${url(`pages/players/stats.html?id=${p.pid}`)}">${esc(p.name)}</a>` : esc(p.name)} <span class="muted">${esc(p.pos)}</span></td>
+                    <td class="num">${GT.pts(p.proj)}</td><td class="num"><b>${GT.pts(p.pts)}</b></td></tr>`).join('')}</tbody></table>`;
+            window.dispatchEvent(new Event('resize'));       // the chart beside it stretches to this tile's height
+        };
+        document.getElementById('st-week').addEventListener('change', e => { luWeek = Number(e.target.value); showLineup(); });
+        document.querySelectorAll('#st-kind button').forEach(btn => btn.addEventListener('click', () => {
+            luKind = btn.dataset.k;
+            document.querySelectorAll('#st-kind button').forEach(x => x.classList.toggle('on', x === btn));
+            showLineup();
+        }));
+        showLineup();
+        const c = { accent: SITE.color('accent'), red: SITE.color('danger'), muted: SITE.color('muted'), grid: SITE.color('track'), line: SITE.color('line-strong') };
+        const q = (s, p) => { const i = (s.length - 1) * p, lo = Math.floor(i); return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (i - lo); };
+        const chart = echarts.init(document.getElementById('st-chart'));
+        chart.setOption({
+            textStyle: { fontFamily: 'Inter, sans-serif' }, grid: { left: 40, right: 14, top: 28, bottom: 26 },
+            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+            tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 } },
+            xAxis: { type: 'category', data: wks.map(w => byWeek(w)[0].period === 'Regular' ? `W${w}` : `W${w}*`), axisLabel: { color: c.muted, fontSize: 10 } },
+            yAxis: { type: 'value', axisLabel: { color: c.muted, fontSize: 10 }, splitLine: { lineStyle: { color: c.grid } }, min: v => Math.floor(v.min / 10) * 10 },
+            series: [{ name: 'Managers', type: 'boxplot', itemStyle: { color: SITE.color('surface-2'), borderColor: c.line },
+                       data: wks.map(w => { const s = byWeek(w).map(g => g.pf).sort((x, y) => x - y); return [s[0], q(s, 0.25), q(s, 0.5), q(s, 0.75), s[s.length - 1]]; }) },
+                     { name: 'Stream Team', type: 'line', symbolSize: 6, itemStyle: { color: c.accent }, lineStyle: { color: c.accent, width: 3 }, data: wks.map(w => byWeek(w)[0].sp) },
+                     { name: 'Best Wire', type: 'line', symbolSize: 5, itemStyle: { color: c.red }, lineStyle: { color: c.red, type: 'dashed' }, data: wks.map(w => byWeek(w)[0].sb) }]
+        });
+        window.addEventListener('resize', () => chart.resize());
     }
 
     // the season's weekly score ranks: every manager's quads and rank spread (regular season)

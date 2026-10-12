@@ -200,6 +200,27 @@
         if (e.ctrlKey || e.metaKey) window.open(row.dataset.href, '_blank'); else location.href = row.dataset.href;
     });
 
+    // Tooltips: any element with data-tip="..." explains itself on hover (or tap on a phone). One floating box for the
+    // whole page, positioned in the viewport, so tables that scroll or clip their cells never cut it off.
+    const tipBox = document.createElement('div');
+    tipBox.className = 'tipbox';
+    tipBox.setAttribute('role', 'tooltip');
+    let tipFor = null;
+    const showTip = el => {
+        tipFor = el;
+        tipBox.textContent = el.dataset.tip;
+        tipBox.classList.add('on');
+        const r = el.getBoundingClientRect(), w = tipBox.offsetWidth, h = tipBox.offsetHeight;
+        const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+        const top = r.top - h - 8 >= 8 ? r.top - h - 8 : r.bottom + 8;
+        tipBox.style.left = `${left}px`; tipBox.style.top = `${top}px`;
+    };
+    const hideTip = () => { tipFor = null; tipBox.classList.remove('on'); };
+    document.addEventListener('mouseover', e => { const el = e.target.closest('[data-tip]'); if (el && el !== tipFor) showTip(el); else if (!el && tipFor) hideTip(); });
+    document.addEventListener('click', e => { const el = e.target.closest('[data-tip]'); if (el && el !== tipFor) showTip(el); else if (!el) hideTip(); });
+    window.addEventListener('scroll', hideTip, { passive: true });
+    document.body.appendChild(tipBox);
+
     renderHeader();
     renderFooter();
     const color = name => getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();   // theme colour, e.g. color('accent')

@@ -8,7 +8,7 @@ window.MONEYBALL = (() => {
     const quantile = (sorted, q) => { if (!sorted.length) return null; const i = (sorted.length - 1) * q, lo = Math.floor(i); return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * (i - lo); };
     const mean = list => (list.length ? list.reduce((t, v) => t + v, 0) / list.length : null);
     const QUADS = ['1–4', '5–8', '9–12', '13–16'];
-    let host, data, scope = 'completed', charts = [];
+    let host, data, scope = 'completed', charts = [], tab = 'win', posData = null, posCharts = [];
 
     async function load() {
         const [games, teams] = await Promise.all([
@@ -196,6 +196,152 @@ window.MONEYBALL = (() => {
         host.querySelector('#mb-scope-note').textContent = `${label} · ${A.games.length.toLocaleString()} team-games · ${A.teams.length} team-seasons`;
     }
 
+    // ================================================================ POSITIONAL VALUE
+    // Every regular-season lineup split by slot. Each team-week's slot points and team score are measured against that
+    // week's league average (so a high-scoring year doesn't look like a good QB). A slot's share of the scoring swings
+    // is cov(slot, team score) / var(team score): the shares of all slots add up to 100%. Draft capital: each pick is
+    // worth (picks left in the draft) / (picks in the draft), so 1.01 = 1 and the last pick ~ 0.
+    const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'P', 'D/ST', 'HC'];
+    const POS_ORDER = ['QB', 'RB', 'WR', 'TE', 'K', 'P', 'D/ST', 'HC'];
+    async function loadPos() {
+        if (posData) return posData;
+        const [lineups, picks] = await Promise.all([
+            GT.query(`SELECT fr.season, fr.week, fr.owner_id AS id, frp.slot_position AS slot, p.position AS pos, frp.actual_points AS pts
+                      FROM fantasy_rosters fr JOIN fantasy_roster_players frp ON frp.roster_id = fr.roster_id JOIN players p ON p.player_id = frp.player_id
+                      WHERE frp.slot_position NOT IN ('BE', 'IR') AND frp.actual_points IS NOT NULL`),
+            GT.query(`SELECT season, overall_pick AS pick, pos FROM draft_picks`).catch(() => [])
+        ]);
+        const tw = {};
+        data.games.forEach(g => { tw[`${g.season}|${g.week}|${g.id}`] = { season: g.season, week: g.week, pf: g.pf, margin: g.pf - g.pa, won: g.won, slot: {}, n: {}, pos: {} }; });
+        lineups.forEach(r => {
+            const x = tw[`${r.season}|${r.week}|${r.id}`];
+            if (!x) return;                                    // playoffs / no recorded game
+            x.slot[r.slot] = (x.slot[r.slot] || 0) + r.pts; x.n[r.slot] = (x.n[r.slot] || 0) + 1;
+            x.pos[r.pos] = (x.pos[r.pos] || 0) + r.pts;
+        });
+        posData = { teamWeeks: Object.values(tw).filter(x => Object.keys(x.slot).length), picks };
+        return posData;
+    }
+    const cov = (xs, ys) => { const n = xs.length; if (n < 3) return null; const mx = mean(xs), my = mean(ys); return xs.reduce((t, x, i) => t + (x - mx) * (ys[i] - my), 0) / n; };
+    const corr = (xs, ys) => { const c = cov(xs, ys), a = cov(xs, xs), b = cov(ys, ys); return c == null || !a || !b ? null : c / Math.sqrt(a * b); };
+
+    function analysePos(D) {
+        const inScope = s => (scope === 'completed' ? data.completed.includes(s) : scope === 'all' ? true : s === Number(scope));
+        const rows = D.teamWeeks.filter(x => inScope(x.season));
+        // week means, to take out each week's scoring environment
+        const wk = {};
+        rows.forEach(x => { const k = `${x.season}|${x.week}`; (wk[k] = wk[k] || []).push(x); });
+        const weekMean = (x, f) => mean(wk[`${x.season}|${x.week}`].map(f));
+        const pfDev = rows.map(x => x.pf - weekMean(x, y => y.pf));
+        const varPf = cov(pfDev, pfDev);
+        const slots = SLOT_ORDER.filter(s => rows.some(x => x.n[s]));
+        const slotStats = slots.map(s => {
+            const have = rows.filter(x => x.n[s]);
+            const per = have.map(x => x.slot[s] / x.n[s]);
+            const won = have.filter(x => x.won === 1), lost = have.filter(x => x.won === 0);
+            const dev = rows.map(x => (x.slot[s] || 0) - weekMean(x, y => y.slot[s] || 0));
+            // win curve: team win rate across ten equal-size bins of points per starter; the 50% line is where it crosses
+            const order = have.map((x, i) => ({ v: per[i], w: x.won })).sort((a, b) => a.v - b.v);
+            const bins = Array.from({ length: 10 }, (_, i) => order.slice(Math.floor(i * order.length / 10), Math.floor((i + 1) * order.length / 10)))
+                .filter(b => b.length).map(b => ({ v: mean(b.map(x => x.v)), w: mean(b.map(x => x.w)) }));
+            let line = null;
+            for (let i = 1; i < bins.length; i++) if (bins[i - 1].w < 0.5 && bins[i].w >= 0.5) { const a = bins[i - 1], c = bins[i]; line = a.v + (0.5 - a.w) / (c.w - a.w) * (c.v - a.v); break; }
+            return { s, starters: mean(have.map(x => x.n[s])), avg: mean(per), win: mean(won.map(x => x.slot[s] / x.n[s])), loss: mean(lost.map(x => x.slot[s] / x.n[s])),
+                     line, r: corr(dev, rows.map(x => x.margin)), share: varPf ? cov(dev, pfDev) / varPf : null, bins };
+        });
+        // by player position (FLEX starts count for the player's own position), against draft capital
+        const posList = POS_ORDER.filter(pp => rows.some(x => x.pos[pp]));
+        const posShare = Object.fromEntries(posList.map(pp => { const dev = rows.map(x => (x.pos[pp] || 0) - weekMean(x, y => y.pos[pp] || 0)); return [pp, varPf ? cov(dev, pfDev) / varPf : null]; }));
+        const picks = D.picks.filter(k => inScope(k.season));
+        const per = {};
+        picks.forEach(k => { per[k.season] = Math.max(per[k.season] || 0, k.pick); });
+        const capital = {};
+        picks.forEach(k => { if (k.pos) capital[k.pos] = (capital[k.pos] || 0) + (per[k.season] - k.pick + 1) / per[k.season]; });
+        const capTotal = posList.reduce((t, pp) => t + (capital[pp] || 0), 0);
+        const shareTotal = posList.reduce((t, pp) => t + Math.max(0, posShare[pp] || 0), 0);
+        const value = posList.map(pp => {
+            const impact = shareTotal ? Math.max(0, posShare[pp] || 0) / shareTotal : null, cap = capTotal ? (capital[pp] || 0) / capTotal : null;
+            return { pos: pp, impact, cap, index: impact != null && cap ? impact / cap * 100 : null };
+        });
+        return { rows, slotStats, value, picks: picks.length };
+    }
+
+    async function renderPos() {
+        const pane = host.querySelector('#mb-pane-pos');
+        if (!pane.dataset.ready) { pane.innerHTML = '<div class="loading" style="margin:20px 0">Splitting every lineup by slot...</div>'; }
+        const D = await loadPos();
+        posCharts.forEach(c => c.dispose()); posCharts = [];
+        const A = analysePos(D);
+        const p1 = v => v == null || isNaN(v) ? '-' : pts(v);
+        const sg = v => v == null || isNaN(v) ? '-' : `${v >= 0 ? '+' : ''}${pts(v)}`;
+        const verdict = i => i == null ? '-' : i >= 115 ? 'Undervalued' : i <= 85 ? 'Overvalued' : 'Fairly valued';
+        const top = A.slotStats.slice().sort((x, y) => (y.share || 0) / (y.starters || 1) - (x.share || 0) / (x.starters || 1))[0];
+        const under = A.value.filter(v => v.index != null).sort((x, y) => y.index - x.index)[0];
+        const over = A.value.filter(v => v.index != null).sort((x, y) => x.index - y.index)[0];
+        const card = (k, v, s, tip) => `<div class="db-kpi"><span data-tip="${esc(tip)}">${k}</span><b>${v}</b><small>${s}</small></div>`;
+        pane.dataset.ready = '1';
+        pane.innerHTML = `
+            <div class="db-kpis">
+                ${card('Team-weeks', A.rows.length.toLocaleString(), 'regular-season lineups in scope', 'Every manager-week in the scope with a recorded game and lineup. Playoffs are left out.')}
+                ${card('Biggest lever', top ? top.s : '-', top ? `${pct(top.share / top.starters)} of score swings per starter` : '', 'The slot that moves results most per player you start there: its share of the scoring swings divided by how many starters it has.')}
+                ${card('Most undervalued', under ? under.pos : '-', under ? `value index ${Math.round(under.index)} · ${pct(under.impact)} of swings, ${pct(under.cap)} of draft capital` : 'needs drafts in scope', 'The position whose share of the scoring swings is largest compared with the share of draft capital the league spends on it (highest value index).')}
+                ${card('Most overvalued', over ? over.pos : '-', over ? `value index ${Math.round(over.index)} · ${pct(over.impact)} of swings, ${pct(over.cap)} of draft capital` : 'needs drafts in scope', 'The position the league spends the most draft capital on relative to how much of the scoring swings it actually decides (lowest value index).')}
+                ${card('QB line', p1((A.slotStats.find(s => s.s === 'QB') || {}).line), 'QB points where the team starts winning more than half', 'Team win rate climbs with QB points. This is the QB score where it crosses 50%, read off ten equal-size bins of QB weeks.')}
+                ${card('RB line', p1((A.slotStats.find(s => s.s === 'RB') || {}).line), 'points per RB starter for a 50% win rate', 'The points per RB starter where the team win rate crosses 50%.')}
+            </div>
+            <div class="db-grid">
+                <section class="db-tile s12"><header><h3 data-tip="One row per lineup slot, regular season, starters only. Numbers are per starter, so the two RB slots are averaged, not added.">What Each Slot Needs to Produce</h3><p>Per starter in the slot. 50% line = the score where the team's win rate passes half. Share of swings = how much of the week-to-week difference between teams comes from the slot (all slots add to 100%).</p></header>
+                    <div class="table-scroll"><table class="data-table" style="min-width:860px">${SITE.cols('10%', '9%', '11%', '11%', '11%', '10%', '12%', '12%', '14%')}<thead><tr>
+                        <th>Slot</th>
+                        <th class="num" data-tip="Average number of players a team started in this slot (FLEX can be under 2 in seasons with one FLEX).">Starters</th>
+                        <th class="num" data-tip="Average points per starter in this slot, all games.">Avg / starter</th>
+                        <th class="num" data-tip="Average points per starter in this slot in games the team won.">In wins</th>
+                        <th class="num" data-tip="Average points per starter in this slot in games the team lost.">In losses</th>
+                        <th class="num" data-tip="In wins minus in losses: how many more points per starter winning teams got from this slot.">Gap</th>
+                        <th class="num" data-tip="The points per starter where the team's win rate crosses 50%. Below it the team loses more often than not; above it, wins more often. Read off ten equal-size bins of this slot's weeks; '-' when the curve never crosses cleanly.">50% line</th>
+                        <th class="num" data-tip="Correlation between the slot's points (vs the week's league average) and the game margin. 0 = no relationship, 1 = perfect. Above about 0.3 is a strong link for one slot.">r with margin</th>
+                        <th class="num" data-tip="Share of swings: how much of the week-to-week difference between team scores comes from this slot. Each team-week is measured against that week's league average first, then the slot's covariance with the team score is divided by the team score's variance. All slots add up to 100%, so a slot with 20% decides about a fifth of who outscores whom.">Share of swings</th></tr></thead><tbody>
+                    ${A.slotStats.map(s => `<tr><td><b>${s.s}</b></td><td class="num">${s.starters.toFixed(1)}</td><td class="num">${p1(s.avg)}</td><td class="num win">${p1(s.win)}</td>
+                        <td class="num loss">${p1(s.loss)}</td><td class="num"><b>${sg(s.win - s.loss)}</b></td><td class="num">${p1(s.line)}</td>
+                        <td class="num">${s.r == null ? '-' : s.r.toFixed(2)}</td><td class="num"><b>${pct(s.share, 1)}</b></td></tr>`).join('')}</tbody></table></div></section>
+                <section class="db-tile s7"><header><h3 data-tip="Each slot's weeks are sorted by points per starter and cut into ten equal groups. Each dot is one group: its average slot score (x) and how often those teams won (y). Steeper curves = slots where points matter more.">Win Rate by Slot Score</h3><p>Team win % across ten bins of points per starter. Click a slot in the legend to hide it.</p></header><div class="db-chart" id="mbp-curve"></div></section>
+                <section class="db-tile s5"><header><h3 data-tip="Green: the position's share of the scoring swings (FLEX starts count for the player's own position). Grey: its share of draft capital, where each pick is weighted by how early it went (1.01 = 1, the last pick about 0). Green taller than grey = the league underpays the position.">Impact vs Draft Capital</h3><p>Share of the scoring swings vs share of draft capital spent, by position</p></header><div class="db-chart" id="mbp-value"></div></section>
+                <section class="db-tile s12"><header><h3>Are Positions Over- or Undervalued?</h3><p>Value index = share of swings ÷ share of draft capital × 100. Above 115: the league pays too little for what the position decides; below 85: too much. ${A.picks.toLocaleString()} draft picks in scope.</p></header>
+                    <div class="table-scroll"><table class="data-table" style="min-width:640px">${SITE.cols('16%', '21%', '21%', '18%', '24%')}<thead><tr>
+                        <th>Position</th>
+                        <th class="num" data-tip="The position's share of the week-to-week scoring swings, counting FLEX starts for the player's own position. Only positive shares count toward 100%.">Share of swings</th>
+                        <th class="num" data-tip="The position's share of all draft capital spent in the scope. Each pick is worth (picks left in the draft) / (picks in the draft), so early picks count most.">Share of draft capital</th>
+                        <th class="num" data-tip="Share of swings ÷ share of draft capital × 100. 100 = paid exactly what it decides; 150 = decides half again as much as the league spends on it.">Value index</th>
+                        <th data-tip="Undervalued: index 115 or more. Overvalued: 85 or less. In between: fairly valued.">Verdict</th></tr></thead><tbody>
+                    ${A.value.map(v => `<tr><td><b>${v.pos}</b></td><td class="num">${pct(v.impact, 1)}</td><td class="num">${pct(v.cap, 1)}</td>
+                        <td class="num"><b class="${v.index >= 115 ? 'win' : v.index <= 85 ? 'loss' : ''}">${v.index == null ? '-' : Math.round(v.index)}</b></td><td>${verdict(v.index)}</td></tr>`).join('')}</tbody></table></div></section>
+            </div>
+            <p class="an-note">Regular season, starters only; a FLEX start counts toward the player's own position in the valuation. Every slot and team score is measured against that week's league average first.
+            Draft capital weights each pick by how early it went (1.01 = 1, the last pick about 0).</p>`;
+        const c = { accent: SITE.color('accent'), red: SITE.color('danger'), ink: SITE.color('ink'), muted: SITE.color('muted'), grid: SITE.color('track'), line: SITE.color('line-strong') };
+        const COLORS = { QB: '#c0392b', RB: '#2e86de', WR: '#27ae60', TE: '#e67e22', FLEX: '#16a085', K: '#8e44ad', P: '#7f8c8d', 'D/ST': '#34495e', HC: '#b7950b' };
+        const mountP = (id, option) => { const ch = echarts.init(host.querySelector(`#${id}`)); ch.setOption({ textStyle: { fontFamily: 'Inter, sans-serif' }, animationDuration: 300, ...option }); posCharts.push(ch); };
+        mountP('mbp-curve', {
+            grid: { left: 44, right: 16, top: 30, bottom: 36 },
+            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+            tooltip: { trigger: 'item', formatter: p => `<b>${p.seriesName}</b><br>${pts(p.value[0])} per starter → team won ${Math.round(p.value[1])}%` },
+            xAxis: { type: 'value', name: 'Points per starter', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.muted }, axisLabel: { color: c.muted }, splitLine: { lineStyle: { color: c.grid } } },
+            yAxis: { type: 'value', min: 0, max: 100, axisLabel: { color: c.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: c.grid } } },
+            series: A.slotStats.map(s => ({ name: s.s, type: 'line', smooth: true, symbolSize: 5, itemStyle: { color: COLORS[s.s] }, lineStyle: { color: COLORS[s.s], width: 2 },
+                                            data: s.bins.map(bn => [Math.round(bn.v * 10) / 10, Math.round(bn.w * 1000) / 10]),
+                                            markLine: s.s === 'QB' ? { silent: true, symbol: 'none', lineStyle: { color: c.line, type: 'dashed' }, label: { show: false }, data: [{ yAxis: 50 }] } : undefined }))
+        });
+        mountP('mbp-value', {
+            grid: { left: 40, right: 12, top: 30, bottom: 26 },
+            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => `${v}%` },
+            xAxis: { type: 'category', data: A.value.map(v => v.pos), axisLabel: { color: c.muted } },
+            yAxis: { type: 'value', axisLabel: { color: c.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: c.grid } } },
+            series: [{ name: 'Share of swings', type: 'bar', barMaxWidth: 18, itemStyle: { color: c.accent }, data: A.value.map(v => v.impact == null ? 0 : Math.round(v.impact * 1000) / 10) },
+                     { name: 'Share of draft capital', type: 'bar', barMaxWidth: 18, itemStyle: { color: c.line }, data: A.value.map(v => v.cap == null ? 0 : Math.round(v.cap * 1000) / 10) }]
+        });
+    }
+
     async function mount(el) {
         host = el;
         data = await load();
@@ -203,11 +349,15 @@ window.MONEYBALL = (() => {
             <div class="mb-head">
                 <div><div class="eyebrow">What it takes to win here</div><h2 class="section-title">Moneyball</h2>
                     <p class="section-copy" style="max-width:none">Regular season only. Playoff rates use seasons whose bracket is finished.</p></div>
-                <label class="sx-f"><span>Scope</span><select class="select" id="mb-scope">
+                <div class="mb-controls">
+                    <div class="sx-f"><span>View</span><div class="seg" id="mb-tabs"><button data-t="win" class="on">What it takes to win</button><button data-t="pos">Positional value</button></div></div>
+                    <label class="sx-f"><span>Scope</span><select class="select" id="mb-scope">
                     <option value="completed">All completed seasons</option><option value="all">Every season</option>
-                    ${data.seasons.map(s => `<option value="${s}">${s}</option>`).join('')}</select></label>
+                    ${data.seasons.map(s => `<option value="${s}">${s}</option>`).join('')}</select></label></div>
             </div>
             <p class="db-note" id="mb-scope-note" style="margin:0 0 10px"></p>
+            <div id="mb-pane-pos" hidden></div>
+            <div id="mb-pane-win">
             <div class="db-kpis" id="mb-cards"></div>
             <div class="db-grid">
                 <section class="db-tile s7"><header><h3>Scoring Distribution & Win Curve</h3><p>Every weekly score (bars) and how often that score won (line). Dashed: median and middle half.</p></header><div class="db-chart" id="mb-dist"></div></section>
@@ -218,11 +368,18 @@ window.MONEYBALL = (() => {
                 <section class="db-tile s12"><header><h3>Quads: Weekly Score Rank</h3><p>Every week's scores ranked 1–16: how often each group won its game, and what it scored</p></header><div id="mb-wkquads"></div></section>
                 <section class="db-tile s12"><header><h3>Manager Quads: Weekly Scoring Position</h3><p>Every manager by all-play %. PCT 1-4 etc. = win % in weeks their score ranked in that quad. Luck = wins minus what all-play predicts.</p></header><div id="mb-mgrquads"></div></section>
                 <section class="db-tile s12"><header><h3>Score Rank Matrix</h3><p id="mb-matrix-sub">Weeks each manager finished at each weekly score rank · 1 = highest score of the week</p></header><div id="mb-matrix"></div></section>
-            </div>`;
-        host.querySelector('#mb-scope').addEventListener('change', e => { scope = e.target.value; render(); });
+            </div></div>`;
+        host.querySelector('#mb-scope').addEventListener('change', e => { scope = e.target.value; render(); if (tab === 'pos') renderPos(); });
+        host.querySelectorAll('#mb-tabs button').forEach(btn => btn.addEventListener('click', () => {
+            tab = btn.dataset.t;
+            host.querySelectorAll('#mb-tabs button').forEach(x => x.classList.toggle('on', x === btn));
+            host.querySelector('#mb-pane-win').hidden = tab !== 'win';
+            host.querySelector('#mb-pane-pos').hidden = tab !== 'pos';
+            if (tab === 'pos') renderPos(); else charts.forEach(ch => ch.resize());
+        }));
         render();
-        window.addEventListener('resize', () => charts.forEach(ch => ch.resize()));
-        window.addEventListener('themechange', render);
+        window.addEventListener('resize', () => [...charts, ...posCharts].forEach(ch => ch.resize()));
+        window.addEventListener('themechange', () => { render(); if (tab === 'pos') renderPos(); });
     }
     return { mount };
 })();
