@@ -18,7 +18,8 @@
             { key: 'stats', label: 'Stats', href: 'pages/players/stats.html', needs: 'id' },
             { key: 'highlights', label: 'Highlights', href: 'pages/players/highlights.html', needs: 'id' },
             { key: 'achievements', label: 'Achievements', href: 'pages/players/achievements.html', needs: 'id' },
-            { key: 'game-history', label: 'Game History', href: 'pages/players/game-history.html', needs: 'id' }
+            { key: 'game-history', label: 'Game History', href: 'pages/players/game-history.html', needs: 'id' },
+            { key: 'compare', label: 'Compare', href: 'pages/players/compare.html', carry: 'ids' }   // takes the current player along
         ] },
         { key: 'recordbook', label: 'Recordbook', href: 'pages/recordbook/league-records.html', children: [
             { key: 'league-records', label: 'League Records', href: 'pages/recordbook/league-records.html' },
@@ -149,7 +150,7 @@
         const group = SITE_MAP.find(g => g.key === sectionKey);
         return group.children.filter(c => !c.menuOnly).map(c => ({
             label: c.label,
-            href: url(c.href) + (c.needs && id ? `?${c.needs}=${encodeURIComponent(id)}` : ''),
+            href: url(c.href) + ((c.needs || c.carry) && id ? `?${c.needs || c.carry}=${encodeURIComponent(id)}` : ''),
             active: c.key === activeKey
         }));
     }

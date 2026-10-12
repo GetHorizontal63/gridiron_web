@@ -495,7 +495,15 @@
     // the record holder's logo: the manager name at the start of the label ("Gabe (2021)", "Jack vs Blake", ...)
     const ownerOf = label => String(label || '').split(/[\s(]/)[0];
     const GPA_KEY = /Gpa/;
-    const shown = (key, v) => GPA_KEY.test(key) ? v : String(v).replace(/^([+-]?\d+\.\d)\d$/, (m) => Number(m).toFixed(1));
+    // decimals: under 100 (one or two digits before the point) show hundredths (xx.xx); 100 and up keep one decimal.
+    // The unrounded value is used when the record has one, so the second decimal is real. Whole numbers stay whole.
+    const shown = (key, v, raw) => {
+        if (GPA_KEY.test(key)) return v;
+        const s = String(v), m = s.match(/^([+-]?)(\d+)\.(\d+)(%?)$/);
+        if (!m) return s;
+        const num = typeof raw === 'number' && !Number.isNaN(raw) ? Math.abs(raw) : Number(`${m[2]}.${m[3]}`);
+        return m[2].length <= 2 ? `${m[1]}${num.toFixed(2)}${m[4]}` : `${m[1]}${Number(`${m[2]}.${m[3]}`).toFixed(1)}${m[4]}`;
+    };
     // "Owner (2019 Wk 7) - Player" reads better as two short lines in the same row: player, then owner and week
     const nameHTML = d => {
         if (!d) return '--';
@@ -503,7 +511,7 @@
         return m ? `<b class="rb-two">${esc(m[4])}</b><small class="rb-two">${esc(m[1])} · ${m[2]} Wk ${m[3]}</small>` : esc(d.team);
     };
     const recordCard = card => {
-        const data = (RESULTS[card.key] || []).map(d => ({ ...d, value: shown(card.key, d.value) }));
+        const data = (RESULTS[card.key] || []).map(d => ({ ...d, value: shown(card.key, d.value, d.raw) }));
         const rows = [0, 1, 2].map(i => {
             const d = data[i];
             return `<li class="${i === 0 ? 'rb-holder' : ''}"><span class="rb-rank">${i + 1}</span>
@@ -597,7 +605,7 @@
             const winnerIsTeam = a > b, key = `${win}-${lose}`;
             if (!cells.has(key)) cells.set(key, []);
             cells.get(key).push({ winner: winnerIsTeam ? g.Team : g.Opponent, loser: winnerIsTeam ? g.Opponent : g.Team,
-                win: Math.max(a, b), lose: Math.min(a, b), season: g.Season, week: g.Week, period: g['Season Period'] });
+                win: Math.max(a, b), lose: Math.min(a, b), season: g.Season, week: g.Week, period: g['Season Period'], gameId: g['Game ID'] });
             games += 1;
         });
         scorigami = { cells, games };
@@ -611,7 +619,55 @@
                     <span class="scori-key" style="background:${SCORI_COLORS[2]}"></span><span>2</span>
                     <span class="scori-key" style="background:${SCORI_COLORS[3]}"></span><span>3+</span>
                     <span class="ro-key">${cells.size.toLocaleString()} of ${possible.toLocaleString()} possible scores reached (${(cells.size / possible * 100).toFixed(1)}%) · scores rounded down · hover a square for its games</span></div>
-            </div></section>`;
+            </div>
+            ${scoriCards(cells)}</section>`;
+    }
+
+    // Four cards under the grid. A "scorigami" is a game whose final score (both rounded down) had never happened before.
+    // Every row opens that game in the game center.
+    function scoriCards(cells) {
+        const when = g => g.season * 100 + g.week;
+        const label = g => GT.periodLabel(g.period, g.week).replace(/^Regular /, '').replace(/W(\d+)$/, 'Week $1');
+        const all = [...cells.entries()].map(([key, games]) => {
+            const list = games.slice().sort((x, y) => when(x) - when(y));
+            const [w, l] = key.split('-').map(Number);
+            return { key, w, l, n: list.length, first: list[0], last: list[list.length - 1], list, margin: w - l, total: w + l };
+        });
+        const row = (g, right, tip = '') => `<li class="row-link" data-href="${GT.gameHref(g.gameId)}"${tip ? ` data-tip="${esc(tip)}"` : ' title="Open game center"'}>
+            <img src="${GT.logo(g.winner)}" alt=""><span class="sg-who"><b>${esc(g.winner)} v ${esc(g.loser)}</b><small>${g.season} ${esc(label(g))}</small></span>
+            <span class="sg-val">${right}</span></li>`;
+        const score = c => `${c.w}-${c.l}`;
+        const leaderRow = (r, right, tip) => `<li class="row-link" data-href="${GT.gameHref(r.last.gameId)}" data-tip="${esc(tip)}">
+            <img src="${GT.logo(r.name)}" alt=""><span class="sg-who"><b>${esc(r.name)}</b><small>latest v ${esc(r.last.loser)} · '${String(r.last.season).slice(2)} W${r.last.week}</small></span>
+            <span class="sg-val">${right}</span></li>`;
+        const others = c => c.n > 1 ? `${c.n} times: ${c.list.map(g => `${g.winner} v ${g.loser} (${g.season} W${g.week})`).join(', ')}` : '';
+        // 1. the ten most recent scorigamis (first-ever scores), newest first
+        const recent = all.slice().sort((x, y) => when(y.first) - when(x.first) || y.total - x.total).slice(0, 10);
+        // 2. the ten rarest scores: fewest times, then biggest margin, then most total points
+        const rare = all.slice().sort((x, y) => x.n - y.n || y.margin - x.margin || y.total - x.total).slice(0, 10);
+        // 3. the ten most common scores: most times, then most recent, then most total points
+        const common = all.slice().sort((x, y) => y.n - x.n || when(y.last) - when(x.last) || y.total - x.total).slice(0, 10);
+        // 4. scorigami leaders: managers whose win produced the most first-ever scores
+        const lead = {};
+        all.forEach(c => { const g = c.first, r = lead[g.winner] || (lead[g.winner] = { name: g.winner, n: 0, last: g }); r.n++; if (when(g) > when(r.last)) r.last = g; });
+        const leaders = Object.values(lead).sort((x, y) => y.n - x.n || when(y.last) - when(x.last)).slice(0, 10);
+        const once = all.filter(c => c.n === 1).length;
+        const card = (title, tip, body, foot) => `<div class="card"><div class="card-head"><span class="card-title" data-tip="${esc(tip)}">${title}</span></div>
+            <div class="card-body"><ul class="mini-list sg-list">${body}</ul></div><span class="card-link">${foot}</span></div>`;
+        return `<div class="card-row sg-cards" style="margin-top:18px">
+            ${card('Latest Scorigamis', 'The 10 most recent games that ended in a final score (both scores rounded down) the league had never seen before.',
+                   recent.map(c => row(c.first, `<b>${score(c)}</b>`, c.n > 1 ? `First time this score happened. Since then: ${others(c)}` : '')).join(''),
+                   `${all.length.toLocaleString()} different scores`)}
+            ${card('Rarest Scores', 'The 10 scores that have happened the fewest times. Ties (most have happened only once) go to the biggest winning margin, then the most total points.',
+                   rare.map(c => row(c.last, `<b>${score(c)}</b><small>${c.n === 1 ? 'once' : c.n + 'x'} · +${c.margin}</small>`, others(c))).join(''),
+                   `${once.toLocaleString()} happened once`)}
+            ${card('Most Common Scores', 'The 10 final scores that have happened most often (both scores rounded down). Each row opens the most recent time it happened; hover for every game.',
+                   common.map(c => row(c.last, `<b>${score(c)}</b><small>${c.n}x</small>`, others(c))).join(''),
+                   'Opens the latest game')}
+            ${card('Scorigami Leaders', 'Managers whose win produced the most first-ever final scores. Each row opens their latest one.',
+                   leaders.map(r => leaderRow(r, `<b>${r.n}</b><small>scorigamis</small>`, `${r.name}: ${r.n} first-ever scores. Latest: ${r.last.win.toFixed(1)}-${r.last.lose.toFixed(1)} v ${r.last.loser}, ${r.last.season} W${r.last.week}`)).join(''),
+                   'Credited to the winner')}
+        </div>`;
     }
     function drawScorigami() {
         const canvas = document.getElementById('scori-canvas');
