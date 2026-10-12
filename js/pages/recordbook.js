@@ -7,7 +7,7 @@
     const page = document.body.dataset.page;
     const content = document.getElementById('content');
     const TAB_LABEL = { 'league-records': 'League Records', 'single-game': 'Single Game', 'single-season': 'Single Season',
-                        'record-vs-playoffs': 'Record vs. Playoffs', scorigami: 'Scorigami' };
+                        'record-vs-playoffs': 'Record vs. Playoffs', scorigami: 'Scorigami', cumulative: 'Cumulative Points' };
     SITE.subHeader({ crumbs: [['Recordbook', url('pages/recordbook/league-records.html')], [TAB_LABEL[page]]],
                      tabs: SITE.sectionTabs('recordbook', page) });
     SITE.hero({ title: 'Record Book', size: 'short', dots: false, image: 'background-4.png', meta: [TAB_LABEL[page]] });
@@ -744,11 +744,131 @@
         canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
     }
 
+    // ------------------------------------------------------------------ Cumulative Points (every manager's career, game by game)
+    // Every game a manager played, regular season and playoffs, in date order. The y axis is logarithmic so the first
+    // seasons stay readable next to 15,000-point careers; the x axis is the manager's career game number.
+    let cumulative = null;
+    function renderCumulative(rows) {
+        const by = new Map();
+        rows.forEach(g => {
+            if (!g.Team || !g.Opponent || g.Team.toLowerCase() === 'bye' || g.Opponent.toLowerCase() === 'bye') return;
+            const pts = Number(g['Team Score']);
+            if (Number.isNaN(pts) || g['Team Score'] == null) return;
+            if (!by.has(g.Team)) by.set(g.Team, []);
+            by.get(g.Team).push({ pts, season: g.Season, week: g.Week, period: g['Season Period'], gameId: g['Game ID'], lw: Number(g['League Week']) });
+        });
+        const managers = [...by.entries()].map(([name, list]) => {
+            list.sort((x, y) => x.lw - y.lw || x.season - y.season || x.week - y.week);
+            let run = 0;
+            const path = list.map((g, i) => { run += g.pts; return { n: i + 1, lw: g.lw, cum: run, g }; });
+            return { name, path, games: list.length, total: run, ppg: run / list.length, first: list[0].season, last: list[list.length - 1].season };
+        }).sort((x, y) => y.total - x.total);
+        cumulative = managers;
+        const MIN_GAMES = 20;
+        const topTotal = managers.slice(0, 10);
+        const topPpg = managers.filter(m => m.games >= MIN_GAMES).sort((x, y) => y.ppg - x.ppg).slice(0, 10);
+        const row = (m, right, sub) => `<li class="row-link" data-href="${url(`pages/managers/overview.html?m=${encodeURIComponent(m.name)}&season=career`)}" title="Open ${esc(m.name)}'s career">
+            <img src="${GT.logo(m.name)}" alt=""><span class="sg-who"><b>${esc(m.name)}</b><small>${sub}</small></span><span class="sg-val">${right}</span></li>`;
+        return `<section class="rb-category">
+            <div class="eyebrow">${managers.length} managers · ${managers.reduce((t, m) => t + m.games, 0).toLocaleString()} games · regular season and playoffs</div><h2 class="rb-cat-title">Cumulative Points</h2>
+            <div class="panel" style="margin-top:14px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px">
+                    <p class="muted" style="font-size:11px" data-tip="Each line is one manager's career: total fantasy points after every game they have played (x = career games). Former managers are grey and end in a short drop with their logo and name. Log scale (each gridline ten times the last) keeps early careers readable; Linear shows the gaps. Pick a manager in Focus, or click a line or legend name, to light one up.">Total fantasy points after each career game · logo = no longer in the league · pick a manager to focus</p>
+                    <span style="display:flex;gap:8px;align-items:center"><select class="select" id="cum-focus" style="height:32px;padding:6px 28px 6px 10px"><option value="">All managers</option>${managers.slice().sort((x, y) => x.name.localeCompare(y.name)).map(m => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('')}</select>
+                    <span class="seg" id="cum-scale"><button data-s="log" class="on" data-tip="Logarithmic y axis: each gridline is ten times the last, so the first seasons stay readable.">Log</button><button data-s="linear" data-tip="Ordinary y axis: easier to see who is pulling ahead over a long career.">Linear</button></span></span></div>
+                <div id="cum-chart" style="height:520px;width:100%"></div></div>
+            <div class="card-row two" style="margin-top:18px">
+                <div class="card"><div class="card-head"><span class="card-title" data-tip="Most fantasy points over a whole career, regular season and playoffs.">Most Career Points</span></div>
+                    <div class="card-body"><ul class="mini-list sg-list">${topTotal.map(m => row(m, `<b>${Math.round(m.total).toLocaleString()}</b><small>${m.games} games</small>`, `${m.first}-${m.last} · ${GT.pts(m.ppg)} per game`)).join('')}</ul></div>
+                    <span class="card-link">Every game counts</span></div>
+                <div class="card"><div class="card-head"><span class="card-title" data-tip="Highest average score per game over a career, regular season and playoffs. Minimum ${MIN_GAMES} games.">Best Career Points per Game</span></div>
+                    <div class="card-body"><ul class="mini-list sg-list">${topPpg.map(m => row(m, `<b>${GT.pts(m.ppg)}</b><small>${m.games} games</small>`, `${m.first}-${m.last} · ${Math.round(m.total).toLocaleString()} total`)).join('')}</ul></div>
+                    <span class="card-link">Minimum ${MIN_GAMES} games</span></div>
+            </div></section>`;
+    }
+    let cumChart = null, cumScale = 'log', cumFocus = '';
+    // x = career games played. Only exits are marked: a former manager's line ends in a short drop (not down to the
+    // axis) with their logo and name at the bottom of it. Focus (dropdown, or click a line / legend name) lights up one
+    // manager and fades the rest.
+    function drawCumulative() {
+        const el = document.getElementById('cum-chart');
+        if (!el || !cumulative || !window.echarts) return;
+        if (cumChart) cumChart.dispose();
+        cumChart = echarts.init(el);
+        const muted = SITE.color('muted'), grid = SITE.color('track'), ink = SITE.color('ink'), faded = SITE.color('line-strong');
+        const PALETTE = ['#3b7a57', '#2e86de', '#e67e22', '#8e44ad', '#c0392b', '#16a085', '#d4a017', '#34495e', '#e84393', '#0984e3',
+                         '#27ae60', '#d35400', '#9b59b6', '#e74c3c', '#1abc9c', '#2c3e50', '#fd79a8', '#636e72', '#b7950b', '#6c5ce7'];
+        const LOG = cumScale === 'log';
+        const maxN = Math.max(...cumulative.map(m => m.games));
+        const top = Math.ceil(Math.max(...cumulative.map(m => m.total)) / 5000) * 5000;
+        const current = Math.max(...cumulative.map(m => m.last));          // still in the league = played in the newest season
+        // the short drop: a fixed step below where the career ended (managers who left at the same game count step further)
+        const slot = {};
+        cumulative.filter(m => m.last !== current).sort((a, b) => a.name.localeCompare(b.name)).forEach(m => {
+            slot[m.name] = (slot[`#${m.games}`] = (slot[`#${m.games}`] ?? -1) + 1);
+        });
+        const dropTo = (m, y) => LOG ? y / Math.pow(1.7, 1 + (slot[m.name] || 0)) : y * Math.max(0.15, 1 - 0.2 * (1 + (slot[m.name] || 0)));
+        let k = 0;
+        cumChart.setOption({
+            textStyle: { fontFamily: 'Inter, sans-serif' }, animationDuration: 500,
+            grid: { left: 52, right: 96, top: 44, bottom: 40 },
+            legend: { type: 'scroll', top: 0, textStyle: { color: muted, fontSize: 10 }, itemWidth: 12, itemHeight: 8, pageTextStyle: { color: muted } },
+            tooltip: { trigger: 'item', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 },
+                       formatter: p => { const d = p.data && p.data.d; if (!d) return esc(p.name || p.seriesName); return `<b>${esc(p.seriesName)}</b> · career game ${d.n}<br>${Math.round(d.cum).toLocaleString()} total points<br>${d.g.season} ${esc(GT.periodLabel(d.g.period, d.g.week))}: ${GT.pts(d.g.pts)}`; } },
+            xAxis: { type: 'value', name: 'Career games played', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: muted }, min: 1, max: maxN, axisLabel: { color: muted }, splitLine: { lineStyle: { color: grid } } },
+            yAxis: LOG ? { type: 'log', logBase: 10, min: 50, max: top, axisLabel: { color: muted, formatter: v => v >= 1000 ? `${v / 1000}k` : v }, splitLine: { lineStyle: { color: grid } } }
+                       : { type: 'value', min: 0, max: top, axisLabel: { color: muted, formatter: v => v >= 1000 ? `${v / 1000}k` : v }, splitLine: { lineStyle: { color: grid } } },
+            series: cumulative.map(m => {
+                const active = m.last === current;
+                const color = active ? PALETTE[k++ % PALETTE.length] : faded;
+                const on = !cumFocus || cumFocus === m.name;
+                const end = m.path[m.path.length - 1], foot = dropTo(m, end.cum);
+                return {
+                    name: m.name, type: 'line', showSymbol: false, symbolSize: 5,
+                    lineStyle: { width: cumFocus === m.name ? 3.5 : active ? 2 : 1.4, color, opacity: on ? (active ? 1 : 0.8) : 0.1 },
+                    itemStyle: { color },
+                    emphasis: { focus: 'series', lineStyle: { width: 3.5, opacity: 1 } },
+                    endLabel: { show: active && on, formatter: '{a}', color: ink, fontSize: 10, distance: 6 },
+                    labelLayout: { moveOverlap: 'shiftY' },
+                    data: m.path.map(d => ({ value: [d.n, Math.round(d.cum * 10) / 10], d })),
+                    markLine: active ? undefined : { silent: true, symbol: 'none', animation: false,
+                        lineStyle: { color: faded, type: 'dashed', width: 1, opacity: on ? 1 : 0.15 }, label: { show: false },
+                        data: [[{ coord: [end.n, end.cum] }, { coord: [end.n, foot] }]] },
+                    markPoint: active ? undefined : { animation: false, itemStyle: { opacity: on ? 1 : 0.15 },
+                        data: [{ coord: [end.n, foot], name: `${m.name} left after ${m.last}: ${Math.round(end.cum).toLocaleString()} points in ${m.games} games`,
+                                 symbol: `image://${GT.logo(m.name)}`, symbolSize: 20,
+                                 label: { show: on, position: end.n > maxN * 0.85 ? 'left' : 'right', formatter: `${m.name} · left ${m.last}`, color: muted, fontSize: 9.5 } }] }
+                };
+            })
+        });
+        cumChart.on('click', p => { if (p.seriesName) setCumFocus(cumFocus === p.seriesName ? '' : p.seriesName); });
+        cumChart.on('legendselectchanged', p => { cumChart.dispatchAction({ type: 'legendSelect', name: p.name }); setCumFocus(cumFocus === p.name ? '' : p.name); });
+    }
+    function setCumFocus(name) {
+        cumFocus = name;
+        const sel = document.getElementById('cum-focus'); if (sel) sel.value = name;
+        drawCumulative();
+    }
+    function cumulativeScale() {
+        document.querySelectorAll('#cum-scale button').forEach(btn => btn.addEventListener('click', () => {
+            cumScale = btn.dataset.s;
+            document.querySelectorAll('#cum-scale button').forEach(x => x.classList.toggle('on', x === btn));
+            drawCumulative();
+        }));
+        const sel = document.getElementById('cum-focus');
+        if (sel) sel.addEventListener('change', e => setCumFocus(e.target.value));
+    }
+
     // ================================================================== run only what this sub page needs
     try {
         if (page === 'record-vs-playoffs') {
             const [teamRows, scoreRows] = await Promise.all([LeagueDb.seasonTeamRows(), LeagueDb.scoreRows()]);
             content.innerHTML = `<div class="wrap page-pad">${renderRecordOdds(teamRows, scoreRows)}</div>`;
+        } else if (page === 'cumulative') {
+            content.innerHTML = `<div class="wrap page-pad">${renderCumulative(await LeagueDb.scoreRows())}</div>`;
+            drawCumulative(); cumulativeScale();
+            window.addEventListener('resize', () => cumChart && cumChart.resize());
+            window.addEventListener('themechange', drawCumulative);
         } else if (page === 'scorigami') {
             content.innerHTML = `<div class="wrap page-pad">${renderScorigami(await LeagueDb.scoreRows())}</div>`;
             drawScorigami(); hookScoriTip();

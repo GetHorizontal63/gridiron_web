@@ -75,12 +75,50 @@
             <div class="search-box"><input id="q" type="search" placeholder="Search by name..." value="${esc(query)}" autocomplete="off"></div>
             <div class="seg find-pos" id="pos">${POS.map(p => `<button data-p="${p}" class="${p === pos ? 'on' : ''}">${p}</button>`).join('')}</div>
         </div>
-        <div class="panel"><div class="table-scroll"><table class="data-table">${SITE.cols('36%', '9%', '17%', '12%', '13%', '13%')}<thead><tr><th>Player</th><th>Pos</th><th>Team</th>
-            <th class="num">Games</th><th class="num">Fantasy Pts</th><th class="num">Per Game</th></tr></thead><tbody id="rows"></tbody></table></div>
+        <div class="panel"><div class="table-scroll"><table class="data-table" id="find-table"></table></div>
             <div class="pager" id="pager"></div></div></div>`;
     document.getElementById('season').value = season;
 
-    function render() {
+    // ---- FP+ boom / bust rates (js/fpplus.js): every projected week classified against its position, for the chosen year
+    // (or every year pooled). Wide screens show five columns; narrow ones just all busts / normal / all booms.
+    const narrowMq = matchMedia('(max-width: 1000px)');
+    const rateCache = {};
+    const rates = yr => rateCache[yr] || (rateCache[yr] = GT.query(`SELECT w.season, w.week, w.player_id AS id, w.points AS pts, w.projected AS proj, v.pos
+            FROM player_week_points w JOIN player_values v ON v.season = w.season AND v.player_id = w.player_id
+            WHERE w.points IS NOT NULL AND ($s = 0 OR w.season = $s)`, { $s: yr === ALL ? 0 : Number(yr) }).then(rows => {
+        const out = new Map(), byPos = {};
+        rows.forEach(r => { (byPos[r.pos] = byPos[r.pos] || []).push(r); });
+        Object.values(byPos).forEach(list => {
+            const C = FPP.classify(list), mine = {};
+            list.forEach(r => { (mine[r.id] = mine[r.id] || []).push(r); });
+            Object.entries(mine).forEach(([id, l]) => out.set(String(id), FPP.mix(l, C)));
+        });
+        return out;
+    }).catch(() => new Map()));
+    const RATE_COLS = [
+        { k: 'disaster', label: 'Disaster', wide: true, get: m => m.share('disaster'), cls: 'loss', tip: 'Share of projected weeks more than 3 standard deviations below the position\'s average weekly FP+.' },
+        { k: 'bust', label: 'Bust', get: m => m.side(-1), cls: 'loss', tip: 'Share of projected weeks at least 0.5 standard deviations below the position\'s average weekly FP+: every bust tier (Bust, Big, Huge, Disaster).' },
+        { k: 'normal', label: 'Normal', short: 'Norm', get: m => m.share('normal'), cls: '', tip: 'Share of projected weeks within half a standard deviation of the position\'s average weekly FP+.' },
+        { k: 'boom', label: 'Boom', get: m => m.side(1), cls: 'win', tip: 'Share of projected weeks at least 0.5 standard deviations above the position\'s average weekly FP+: every boom tier (Boom, Big, Huge, Smash).' },
+        { k: 'smash', label: 'Smash', wide: true, get: m => m.share('smash'), cls: 'win', tip: 'Share of projected weeks more than 3 standard deviations above the position\'s average weekly FP+.' }
+    ];
+    function head(narrow) {
+        const rc = RATE_COLS.filter(c => !narrow || !c.wide);
+        const widths = narrow ? ['30%', '7%', '13%', '8%', '10%', '9%', ...rc.map(() => `${23 / rc.length}%`)]
+                              : ['26%', '6%', '12%', '7%', '9%', '8%', ...rc.map(() => `${32 / rc.length}%`)];
+        document.getElementById('find-table').innerHTML = `${SITE.cols(...widths)}<thead><tr><th>Player</th><th>Pos</th><th>Team</th>
+            <th class="num">Games</th><th class="num">Fantasy Pts</th><th class="num">Per Game</th>
+            ${rc.map(c => `<th class="num" data-tip="${esc(`${c.tip} ${FPP.TIP}`)}">${narrow && c.short ? c.short : c.label}</th>`).join('')}</tr></thead><tbody id="rows"></tbody>`;
+        return rc;
+    }
+
+    let drawn = 0;
+    async function render() {
+        const ticket = ++drawn;
+        const mix = await rates(season);
+        if (ticket !== drawn) return;                     // a newer render started while the rates loaded
+        const rc = head(narrowMq.matches);
+        const pc = v => v == null ? '-' : `${Math.round(v * 100)}%`;
         const ql = query.trim().toLowerCase();
         const list = players
             .filter(p => matches(pos, p.group) && (!ql || p.name.toLowerCase().includes(ql)))
@@ -95,8 +133,10 @@
             const logo = `<img src="${PS.nflLogo(season === ALL ? p.team : teams[0])}" alt=""><b>${esc(p.name)}</b>`;
             return `<tr><td>${p.coach ? `<span class="team-cell">${logo}</span>`
                 : `<a class="team-cell" href="${url(`pages/players/stats.html?id=${encodeURIComponent(p.id)}`)}">${logo}</a>`}</td>
-                <td>${esc(p.pos)}</td><td>${esc(teams.join(', '))}</td><td class="num">${t.g}</td><td class="num"><b>${GT.pts(t.f)}</b></td><td class="num">${t.g ? GT.pts(t.f / t.g) : '-'}</td></tr>`;
-        }).join('') || '<tr><td colspan="6" class="muted">No players found.</td></tr>';
+                <td>${esc(p.pos)}</td><td>${esc(teams.join(', '))}</td><td class="num">${t.g}</td><td class="num"><b>${GT.pts(t.f)}</b></td><td class="num">${t.g ? GT.pts(t.f / t.g) : '-'}</td>
+                ${rc.map(c => { const m = mix.get(String(p.id)); const v = m && m.n ? c.get(m) : null;
+                    return `<td class="num ${c.cls}"${m && m.n ? ` data-tip="${esc(`${c.label}: ${Math.round((v || 0) * m.n)} of ${m.n} projected weeks${m.unprojected ? ` (${m.unprojected} unprojected left out)` : ''}`)}"` : ''}>${pc(v)}</td>`; }).join('')}</tr>`;
+        }).join('') || `<tr><td colspan="${6 + rc.length}" class="muted">No players found.</td></tr>`;
         renderPager(list.length, pages, start);
     }
 
@@ -128,6 +168,7 @@
         document.querySelectorAll('#pos button').forEach(x => x.classList.remove('on'));
         btn.classList.add('on'); pos = btn.dataset.p; page = 1; render();
     }));
+    narrowMq.addEventListener('change', render);        // switch between the five rate columns and three
     updatePositions();
     render();
 })();

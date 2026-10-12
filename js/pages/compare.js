@@ -78,22 +78,18 @@
     async function weeks() {
         const key = st.ids.join(',');
         if (cache.key !== key) {
-            cache = { key, rows: st.ids.length ? await GT.query(`SELECT season, week, player_id AS id, points AS pts, opp FROM player_week_points
+            cache = { key, rows: st.ids.length ? await GT.query(`SELECT season, week, player_id AS id, points AS pts, projected AS proj, opp FROM player_week_points
                                                                  WHERE player_id IN (${st.ids.map(Number).join(',')}) AND points IS NOT NULL ORDER BY season, week`) : [] };
         }
         return cache.rows;
     }
-    // boom / bust lines per position: the 75th / 25th percentile of league starter weeks in the seasons shown
-    async function lines(positions, seasons) {
-        if (!positions.length) return {};
-        const rows = await GT.query(`SELECT v.pos, w.points AS pts FROM fantasy_roster_players frp JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id
-            JOIN player_week_points w ON w.season = fr.season AND w.week = fr.week AND w.player_id = frp.player_id
-            JOIN player_values v ON v.season = w.season AND v.player_id = w.player_id
-            WHERE frp.slot_position NOT IN ('BE','IR') AND w.points IS NOT NULL AND v.pos IN (${positions.map(p => `'${p.replace(/'/g, '')}'`).join(',')})
-              AND fr.season IN (${seasons.map(Number).join(',') || 0})`);
-        const out = {};
-        positions.forEach(pos => { const v = rows.filter(r => r.pos === pos).map(r => r.pts).sort((x, y) => x - y); out[pos] = { boom: q(v, 0.75), bust: q(v, 0.25) }; });
-        return out;
+    // boom / bust by weekly FP+ (js/fpplus.js), classified league-wide per position over the seasons shown
+    async function classes(positions, seasons) {
+        if (!positions.length || !seasons.length) return {};
+        const rows = await GT.query(`SELECT w.season, w.week, w.player_id AS id, w.points AS pts, w.projected AS proj, v.pos
+            FROM player_week_points w JOIN player_values v ON v.season = w.season AND v.player_id = w.player_id
+            WHERE w.points IS NOT NULL AND v.pos IN (${positions.map(p => `'${p.replace(/'/g, '')}'`).join(',')}) AND w.season IN (${seasons.map(Number).join(',')})`);
+        return Object.fromEntries(positions.map(pos => [pos, FPP.classify(rows.filter(r => r.pos === pos))]));
     }
 
     const charts = [];
@@ -155,11 +151,12 @@
         const spanText = single ? `${st.span}, weeks ${Math.min(from, to)}-${Math.max(from, to)}` : 'career';
         document.getElementById('cmp-note').textContent = `${spanText} · ${shown.length} player-weeks`;
         const positions = [...new Set(st.ids.map(id => byId[id].pos))];
-        const L = await lines(positions, single ? [Number(st.span)] : [...new Set(shown.map(r => r.season))]);
+        const CL = await classes(positions, single ? [Number(st.span)] : [...new Set(shown.map(r => r.season))]);
         const players = st.ids.map((id, i) => {
-            const p = byId[id], mine = shown.filter(r => r.id === id), v = mine.map(r => r.pts).sort((x, y) => x - y), ln = L[p.pos] || {};
+            const p = byId[id], mine = shown.filter(r => r.id === id), v = mine.map(r => r.pts).sort((x, y) => x - y), C = CL[p.pos];
+            const mx = C ? FPP.mix(mine, C) : null;
             return { id, i, p, mine, v, n: v.length, tot: v.reduce((t, x) => t + x, 0), avg: meanOf(v), med: q(v, 0.5), floor: q(v, 0.1), ceil: q(v, 0.9), sd: sdOf(v),
-                     boom: v.length && ln.boom != null ? v.filter(x => x >= ln.boom).length / v.length : null, bust: v.length && ln.bust != null ? v.filter(x => x <= ln.bust).length / v.length : null, ln };
+                     fpp: C ? FPP.period(mine, C) : null, mx, boom: mx ? mx.side(1) : null, bust: mx ? mx.side(-1) : null };
         });
         // head to head: weeks every chosen player played; who scored the most
         const key = r => `${r.season}|${r.week}`;
@@ -175,8 +172,9 @@
             ['Floor', p => p.floor, f1, '10th-percentile week: only 1 week in 10 was worse.'],
             ['Ceiling', p => p.ceil, f1, '90th-percentile week: only 1 week in 10 was better.'],
             ['Volatility', p => p.sd, f1, 'Standard deviation of weekly points: higher = bigger swings, lower = steadier. Lower is better here.', true],
-            ['Boom rate', p => p.boom, pc, 'Share of weeks that beat three quarters of league starter weeks at the player\'s position in these seasons.'],
-            ['Bust rate', p => p.bust, pc, 'Share of weeks no better than the worst quarter of league starter weeks at the position. Lower is better.', true],
+            ['FP+', p => p.fpp, v => v == null ? '-' : String(Math.round(v)), 'FP+ over the span: (points / projection) ÷ (the position\'s points / projection in the same weeks) × 100. 100 = performed to projection exactly as well as the position; 120 = 20% better.'],
+            ['Boom rate', p => p.boom, pc, `Share of projected weeks with a weekly FP+ at least 0.5 standard deviations above the position average (every boom tier). ${FPP.TIP}`],
+            ['Bust rate', p => p.bust, pc, `Share of projected weeks with a weekly FP+ at least 0.5 standard deviations below the position average (every bust tier). Lower is better. ${FPP.TIP}`, true],
             ['Top scorer', p => common.length ? top[p.id] / common.length : null, pc, `Of the ${common.length} weeks every player here played, the share in which this player scored the most.`]
         ];
         const best = (fn, low) => { const vals = players.map(fn).filter(v => v != null); return vals.length ? (low ? Math.min(...vals) : Math.max(...vals)) : null; };
@@ -187,7 +185,7 @@
                 ${rowsDef.map(([name, fn, fmt, tip, low]) => { const bst = best(fn, low);
                     return `<tr><td data-tip="${esc(tip)}">${name}</td>${players.map(p => { const v = fn(p); return `<td class="num">${v != null && v === bst && players.length > 1 ? `<b>${fmt(v)}</b>` : fmt(v)}</td>`; }).join('')}</tr>`; }).join('')}
                 </tbody></table></div>
-                <p class="an-note">Bold = best of the group. Boom / bust lines by position: ${positions.map(pos => `${esc(pos)} ${f1((L[pos] || {}).boom)}+ / ${f1((L[pos] || {}).bust)} or less`).join(' · ')}.</p></div>
+                <p class="an-note">Bold = best of the group. Boom / bust by weekly FP+ in standard deviations from each position's average (${positions.map(pos => CL[pos] ? `${esc(pos)} avg ${Math.round(CL[pos].mean)}, 1 SD = ${Math.round(CL[pos].sd)}` : esc(pos)).join(' · ')}); weeks projected under 30% of the position's median projection are left out.</p></div>
             <div class="db-grid" style="margin-top:14px">
                 <section class="db-tile s7"><header><h3 data-tip="Points added up week by week through the span. A steeper line = scoring faster.">Cumulative Points</h3><p>${single ? 'Week by week' : 'Every week played, oldest first'}</p></header><div class="db-chart" id="cmp-cum"></div></section>
                 <section class="db-tile s5"><header><h3 data-tip="How often each weekly score happened, as a smooth curve. Tall and narrow = consistent; wide and flat = boom or bust.">Scoring Distribution</h3><p>Share of weeks at each score</p></header><div class="db-chart" id="cmp-kde"></div></section>

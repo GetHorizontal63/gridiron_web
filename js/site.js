@@ -26,7 +26,8 @@
             { key: 'single-game', label: 'Single Game', href: 'pages/recordbook/single-game.html' },
             { key: 'single-season', label: 'Single Season', href: 'pages/recordbook/single-season.html' },
             { key: 'record-vs-playoffs', label: 'Record vs. Playoffs', href: 'pages/recordbook/record-vs-playoffs.html' },
-            { key: 'scorigami', label: 'Scorigami', href: 'pages/recordbook/scorigami.html' }
+            { key: 'scorigami', label: 'Scorigami', href: 'pages/recordbook/scorigami.html' },
+            { key: 'cumulative', label: 'Cumulative Points', href: 'pages/recordbook/cumulative.html' }
         ] },
         // the earlier Stories pages: no longer in the menus, kept so existing links still work
         { key: 'stories', label: 'Stories', href: 'pages/stories/news.html', hidden: true, children: [
