@@ -1,4 +1,4 @@
-/* Stats: Player Regression. How QBs, RBs, WRs and TEs age, by years in the league or by age, in real stats and in fantasy
+/* Stats: Player Regression. How QBs, RBs, WRs, TEs, kickers and punters age, by years in the league or by age, in real stats and in fantasy
    points re-scored with the current league scoring (data/player_stats/regression.json, NEW/python/player_regression.py).
 
    The aging curve chains year-over-year ratios: for every player with two seasons in a row (both with enough games), his
@@ -17,7 +17,7 @@
     if (!data) { content.innerHTML = '<div class="wrap"><p class="empty">Player data is not available.</p></div>'; return; }
     const S = data.scoring_season;
     SITE.hero({ title: 'Player Regression', size: 'short', dots: false, image: 'background-15.png',
-                meta: [`How every QB, RB, WR and TE aged, ${data.seasons[0]}-${data.seasons[data.seasons.length - 1]}`, `Fantasy points re-scored with the ${S} league scoring`] });
+                meta: [`How every QB, RB, WR, TE, kicker and punter aged, ${data.seasons[0]}-${data.seasons[data.seasons.length - 1]}`, `Fantasy points re-scored with the ${S} league scoring`] });
 
     const F = Object.fromEntries(data.fields.map((f, i) => [f, i]));
     const rows = data.rows.map(r => Object.fromEntries(data.fields.map((f, i) => [f, r[i]])));
@@ -39,10 +39,17 @@
              ['rec_td', 'Rec TD / game', per('rec_td'), 2]]
     };
     M.TE = M.WR;
-    const metricsFor = pos => [M.fp, ...M[pos].map(m => m), M.snap];
+    M.K = [['fg_made', 'FG made / game', per('fg_made'), 2], ['fg_pct', 'FG %', ratio('fg_made', 'fg_att', 10, 100), 1, 'Seasons with 10+ attempts.'],
+           ['fg50', '50+ yd makes / game', per('fg50'), 2], ['xp_pct', 'Extra point %', ratio('xp_made', 'xp_att', 10, 100), 1, 'Seasons with 10+ attempts.']];
+    M.P = [['punt', 'Punts / game', per('punt'), 2], ['p_avg', 'Gross average', ratio('punt_yds', 'punt', 20), 2, 'Seasons with 20+ punts.'],
+           ['in20', 'Inside-20 %', ratio('punt_in20', 'punt', 20, 100), 1, 'Seasons with 20+ punts.'], ['tb', 'Touchback %', ratio('punt_tb', 'punt', 20, 100), 1, 'Seasons with 20+ punts.']];
+    const KICK = new Set(['K', 'P']);
+    const POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'P'];
+    // kickers and punters have no offensive snap share; touchbacks and misses are better low
+    const metricsFor = pos => [M.fp, ...M[pos].map(m => m), ...(KICK.has(pos) ? [] : [M.snap])];
 
     // state (kept in the URL)
-    const st = { pos: ['QB', 'RB', 'WR', 'TE'].includes(param('pos')) ? param('pos') : 'RB', x: param('x') === 'age' ? 'age' : 'exp',
+    const st = { pos: ['QB', 'RB', 'WR', 'TE', 'K', 'P'].includes(param('pos')) ? param('pos') : 'RB', x: param('x') === 'age' ? 'age' : 'exp',
                  m: param('m') || 'fp', min: Number(param('min')) || 6, player: param('player') || '' };
     const fmt = (v, d = 2) => v == null || isNaN(v) ? '-' : Number(v).toFixed(d);
     const sg = (v, d = 2) => v == null || isNaN(v) ? '-' : `${v > 0 ? '+' : ''}${Number(v).toFixed(d)}`;
@@ -100,12 +107,12 @@
         const anchor = cx.slice().sort((a, b) => (cross[b] ? cross[b].n : 0) - (cross[a] ? cross[a].n : 0))[0];
         const scale = anchor != null && cross[anchor] && curve[anchor] ? (cross[anchor].sum / cross[anchor].n) / curve[anchor] : 1;
         cx.forEach(x => { curve[x] *= scale; });
-        const higherIsBetter = st.m !== 'pass_int';
+        const higherIsBetter = !['pass_int', 'tb'].includes(st.m);
         const peakX = cx.length ? cx.slice().sort((a, b) => higherIsBetter ? curve[b] - curve[a] : curve[a] - curve[b])[0] : null;
         return { metric, val, pool, cross, step, spread, curve, cx, xs, peakX, MIN_N, higherIsBetter };
     }
 
-    let watchPage = 1;
+    let watchPage = 1, shown = '';                         // shown = the player drawn in Player vs the Curve
     function render() {
         watchPage = 1;                                     // a new view starts the watch list at page 1
         const u = new URL(location.href);
@@ -167,7 +174,7 @@
             { name, type: 'line', stack: name, data: xs.map(x => +edge(x, k0).toFixed(3)), lineStyle: { opacity: 0 }, symbol: 'none', itemStyle: { color: c.accent, opacity: Math.min(1, op * 3) }, silent: true, tooltip: { show: false } },
             { name, type: 'line', stack: name, data: xs.map(x => +(edge(x, k1) - edge(x, k0)).toFixed(3)), lineStyle: { opacity: 0 }, symbol: 'none', areaStyle: { color: c.accent, opacity: op },
               itemStyle: { color: c.accent, opacity: Math.min(1, op * 3) }, silent: true, tooltip: { show: false } }];
-        const sel = st.player || (document.getElementById('rg-player').dataset.id || '');
+        const sel = st.player || shown;
         const mine = sel ? rows.filter(r => r.id === sel && r.pos === st.pos && r.g >= st.min && md.val(r) != null) : [];
         const byX = Object.fromEntries(mine.map(r => [xv(r), r]));
         ch.setOption({
@@ -255,8 +262,7 @@
             id = vet ? vet.id : null;
         }
         const list = id ? mine(id) : [];
-        document.getElementById('rg-player').value = id ? nameOf(id) : '';
-        document.getElementById('rg-player').dataset.id = id || '';
+        shown = id || '';
         if (id) document.getElementById('rg-psel').value = id;
         if (!list.length) { document.getElementById('rg-player-note').textContent = 'No seasons at this position.'; return; }
         const first = list.find(r => r.g >= st.min && md.val(r) != null) || list[0];
@@ -298,7 +304,7 @@
             The aging curve follows the same players from one season to the next (the average ratio of their next season to this one, chained), so it is not fooled by survivors: the plain average of everyone at a given year (dashed) looks better than it should, because only players good enough to stay are still in the league.
             The season in progress is left out of the curves.</p></div></div>
         <div class="rg-sticky"><div class="sx-bar rg-bar">
-            <span class="seg" id="rg-pos">${['QB', 'RB', 'WR', 'TE'].map(p => `<button data-v="${p}">${p}</button>`).join('')}</span>
+            <span class="seg" id="rg-pos">${POSITIONS.map(p => `<button data-v="${p}">${p}</button>`).join('')}</span>
             <span class="seg" id="rg-x"><button data-v="exp">Years in league</button><button data-v="age">Age</button></span>
             <label class="sx-f"><span>Stat</span><select class="select" id="rg-m"></select></label>
             <label class="sx-f"><span>Min games</span><select class="select" id="rg-min">${[1, 4, 6, 8, 10, 12].map(n => `<option value="${n}">${n}+</option>`).join('')}</select></label>
@@ -315,10 +321,10 @@
             <div class="table-scroll"><table class="data-table" style="min-width:820px">${SITE.cols('5%', '22%', '7%', '7%', '12%', '12%', '12%', '12%', '11%')}<thead><tr>
                 <th class="num">#</th><th>Player</th><th class="num">Yrs</th><th class="num">Age</th><th class="num">Last season</th><th class="num" data-tip="What the curve expects from his year to the next.">Expected change</th>
                 <th class="num">Expected next</th><th class="num" id="rg-watch-now">Now</th><th>Verdict</th></tr></thead><tbody id="rg-watch"></tbody></table></div><div class="pager" id="rg-watch-pager"></div></div>
-        <div class="panel" id="rg-player-panel"><div class="panel-head" style="margin-bottom:8px"><h3 class="panel-title">Player vs the Curve</h3>
-            <label class="sx-f"><span>Player</span><input class="select rg-search" id="rg-player" list="rg-names" placeholder="Search a player"><datalist id="rg-names"></datalist></label></div>
+        <div class="panel" id="rg-player-panel"><h3 class="panel-title" style="margin-bottom:8px" data-tip="Pick the player in the Player dropdown at the top.">Player vs the Curve</h3>
             <div id="rg-player-chart" class="rg-chart-sm"></div><p class="muted rg-note" id="rg-player-note"></p></div>
         <p class="muted hm-foot">Box scores ${data.seasons[0]}-${data.seasons[data.seasons.length - 1]}, regular season only. Years in league counts the rookie season as year 1; age is on September 1.
+            Kickers' made field goals score by distance; older box scores without distances use that season's average per make.
             Re-scoring with the ${S} rules matches ESPN on ${data.check.matched.toLocaleString()} of ${data.check.games.toLocaleString()} ${S} games.</p></div>`;
     const sync = () => {
         document.querySelectorAll('#rg-pos button').forEach(b => b.classList.toggle('on', b.dataset.v === st.pos));
@@ -328,7 +334,6 @@
         document.getElementById('rg-m').innerHTML = ms.map(m => `<option value="${m[0]}"${m[0] === st.m ? ' selected' : ''}>${esc(m[1])}</option>`).join('');
         document.getElementById('rg-min').value = st.min;
         const ids = [...new Set(rows.filter(r => r.pos === st.pos).map(r => r.id))];
-        document.getElementById('rg-names').innerHTML = ids.map(id => `<option value="${esc(nameOf(id))}">`).join('');
         const last = Math.max(...data.complete);
         const top = rows.filter(r => r.pos === st.pos && r.season === last && r.g >= 6).sort((a, b) => b.fp / b.g - a.fp / a.g).slice(0, 30).map(r => r.id);
         const az = ids.slice().sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
@@ -345,11 +350,6 @@
         const md = model(); drawPlayer(md); drawSummary(md);
     };
     document.getElementById('rg-psel').addEventListener('change', e => pickPlayer(e.target.value));
-    document.getElementById('rg-player').addEventListener('change', e => {
-        const want = e.target.value.trim().toLowerCase();
-        const hit = Object.entries(data.players).find(([id, p]) => p[0].toLowerCase() === want && rows.some(r => r.id === id && r.pos === st.pos));
-        if (hit) pickPlayer(hit[0]);
-    });
     window.addEventListener('resize', () => ['rg-curve', 'rg-summary', 'rg-steps', 'rg-player-chart'].forEach(id => { const c = echarts.getInstanceByDom(document.getElementById(id)); c && c.resize(); }));
     window.addEventListener('themechange', () => render());
     sync();

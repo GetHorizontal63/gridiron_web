@@ -1280,7 +1280,6 @@ tr.row-pick{cursor:pointer}
 .rg-kpis{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:10px;margin-bottom:0}
 .rg-chart{width:100%;height:380px}
 .rg-chart-sm{width:100%;height:260px}
-.rg-search{width:240px}
 .rg-note{font-size:12.5px;line-height:1.6;margin-top:8px}
 .rg-v{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border:1px solid currentColor;white-space:nowrap}
 .rg-v.w{color:var(--win)}
