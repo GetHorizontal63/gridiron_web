@@ -288,8 +288,8 @@
                 <div class="db-grid" style="margin-top:14px">
                     <section class="db-tile s12"><header><h3 data-tip="${esc(`Each projected week's FP+, measured in standard deviations from the ${pos} average (${fp(C.mean)}; 1 SD = ${fp(C.sd)}). Shading deepens with each tier, red below and green above: 0.5 to 1.25 SD Boom / Bust, 1.25 to 2 Big, 2 to 3 Huge, beyond 3 Smash / Disaster. Inside the dashed lines (±0.5) is Normal.`)}">FP+ Spread</h3>
                         <p>How each week compared with its projection, relative to every ${esc(pos)} that week. Dots = ${esc(p.name)}'s weeks (hover for the week).</p></header><div class="db-chart" id="fd-z"></div></section>
-                    <section class="db-tile s7"><header><h3 data-tip="How often each weekly score happened, as a smooth curve (a kernel density). A tall narrow peak = consistent; a wide flat curve = up and down.">Scoring Distribution</h3><p>Share of weeks at each point total (smoothed). Dots = ${esc(p.name)}'s weeks.</p></header><div class="db-chart" id="fd-curve"></div></section>
-                    <section class="db-tile s5"><header><h3 data-tip="${esc(`Each bar splits the group's projected weeks by weekly FP+ band. ${FPP.TIP}`)}">Boom / Bust Mix</h3><p>Projected weeks by FP+ band</p></header><div class="db-chart" id="fd-mix"></div></section>
+                    <section class="db-tile s6"><header><h3 data-tip="How often each weekly score happened, as a smooth curve (a kernel density). A tall narrow peak = consistent; a wide flat curve = up and down.">Scoring Distribution</h3><p>Share of weeks at each point total (smoothed). Dots = ${esc(p.name)}'s weeks.</p></header><div class="db-chart" id="fd-curve"></div></section>
+                    <section class="db-tile s6"><header><h3 data-tip="${esc(`Each bar splits the group's projected weeks by weekly FP+ band. ${FPP.TIP}`)}">Boom / Bust Mix</h3><p>Projected weeks by FP+ band</p></header><div class="db-chart" id="fd-mix"></div></section>
                 </div>
                 <p class="an-note">Floor / ceiling = 10th / 90th percentile week and, with the scoring curves, count every week the player recorded a stat. FP+ and the bands use projected weeks only:
                 a week projected under ${f1(C.floor)} points (30% of the ${esc(pos)} median projection) is left out, because a tiny projection makes the ratio meaningless.</p>`;
@@ -302,7 +302,7 @@
             const BAND_COL = { disaster: '#7f1d1d', hugebust: '#b91c1c', bigbust: '#e35d4f', bust: '#f3a79e', normal: c.line,
                                boom: '#9fdcb2', bigboom: '#4caf73', hugeboom: '#1f8a4c', smash: '#14532d' };
             const mount = (elId, option) => { const ch = echarts.init(document.getElementById(elId)); ch.setOption({ textStyle: { fontFamily: 'Inter, sans-serif' }, ...option }); charts.push(ch); };
-            const legend = { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 };
+            const legend = { type: 'scroll', top: 0, left: 'center', textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 };
 
             // FP+ spread in standard deviations, shaded at 1 / 2 / 3 SD
             const zs = Array.from({ length: 81 }, (_, i) => -4 + 8 * i / 80);
@@ -349,7 +349,8 @@
             // band mix
             const order = groups.slice().reverse();
             mount('fd-mix', {
-                grid: { left: 108, right: 14, top: 30, bottom: 26 }, legend,
+                // nine bands: a tighter legend so they all fit on one centred row
+                grid: { left: 108, right: 14, top: 30, bottom: 26 }, legend: { ...legend, itemGap: 6, itemWidth: 8, itemHeight: 8, textStyle: { color: c.muted, fontSize: 9 } },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => `${v}%` },
                 xAxis: { type: 'value', max: 100, axisLabel: { color: c.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: c.grid } } },
                 yAxis: { type: 'category', data: order.map(g => g.key === 'me' ? p.name.split(' ').slice(-1)[0] : g.label), axisLabel: { color: c.ink, fontSize: 10 }, axisTick: { show: false } },

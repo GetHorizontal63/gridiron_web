@@ -648,9 +648,15 @@
         // 3. the ten most common scores: most times, then most recent, then most total points
         const common = all.slice().sort((x, y) => y.n - x.n || when(y.last) - when(x.last) || y.total - x.total).slice(0, 10);
         // 4. scorigami leaders: managers whose win produced the most first-ever scores
+        // n = scorigamis they won; all = scorigamis in any game they played (won or lost); last = their latest win that made one
         const lead = {};
-        all.forEach(c => { const g = c.first, r = lead[g.winner] || (lead[g.winner] = { name: g.winner, n: 0, last: g }); r.n++; if (when(g) > when(r.last)) r.last = g; });
-        const leaders = Object.values(lead).sort((x, y) => y.n - x.n || when(y.last) - when(x.last)).slice(0, 10);
+        const rec = name => lead[name] || (lead[name] = { name, n: 0, all: 0, last: null });
+        all.forEach(c => {
+            const g = c.first, w = rec(g.winner), l = rec(g.loser);
+            w.n++; w.all++; l.all++;
+            if (!w.last || when(g) > when(w.last)) w.last = g;
+        });
+        const leaders = Object.values(lead).filter(r => r.last).sort((x, y) => y.n - x.n || y.all - x.all || when(y.last) - when(x.last)).slice(0, 10);
         const once = all.filter(c => c.n === 1).length;
         const card = (title, tip, body, foot) => `<div class="card"><div class="card-head"><span class="card-title" data-tip="${esc(tip)}">${title}</span></div>
             <div class="card-body"><ul class="mini-list sg-list">${body}</ul></div><span class="card-link">${foot}</span></div>`;
@@ -664,9 +670,9 @@
             ${card('Most Common Scores', 'The 10 final scores that have happened most often (both scores rounded down). Each row opens the most recent time it happened; hover for every game.',
                    common.map(c => row(c.last, `<b>${score(c)}</b><small>${c.n}x</small>`, others(c))).join(''),
                    'Opens the latest game')}
-            ${card('Scorigami Leaders', 'Managers whose win produced the most first-ever final scores. Each row opens their latest one.',
-                   leaders.map(r => leaderRow(r, `<b>${r.n}</b><small>scorigamis</small>`, `${r.name}: ${r.n} first-ever scores. Latest: ${r.last.win.toFixed(1)}-${r.last.lose.toFixed(1)} v ${r.last.loser}, ${r.last.season} W${r.last.week}`)).join(''),
-                   'Credited to the winner')}
+            ${card('Scorigami Leaders', 'First number: scorigamis the manager won (their win produced a first-ever final score). Second: scorigamis in any game they played, won or lost. Ranked by wins. Each row opens their latest winning one.',
+                   leaders.map(r => leaderRow(r, `<b>${r.n} <span class="muted">/ ${r.all}</span></b><small>won / all games</small>`, `${r.name}: won ${r.n} scorigamis and played in ${r.all} (won or lost). Latest win: ${r.last.win.toFixed(1)}-${r.last.lose.toFixed(1)} v ${r.last.loser}, ${r.last.season} W${r.last.week}`)).join(''),
+                   'Won / every game played')}
         </div>`;
     }
     function drawScorigami() {
@@ -812,7 +818,7 @@
         cumChart.setOption({
             textStyle: { fontFamily: 'Inter, sans-serif' }, animationDuration: 500,
             grid: { left: 52, right: 96, top: 44, bottom: 40 },
-            legend: { type: 'scroll', top: 0, textStyle: { color: muted, fontSize: 10 }, itemWidth: 12, itemHeight: 8, pageTextStyle: { color: muted } },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: muted, fontSize: 10 }, itemWidth: 12, itemHeight: 8, pageTextStyle: { color: muted } },
             tooltip: { trigger: 'item', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 },
                        formatter: p => { const d = p.data && p.data.d; if (!d) return esc(p.name || p.seriesName); return `<b>${esc(p.seriesName)}</b> · career game ${d.n}<br>${Math.round(d.cum).toLocaleString()} total points<br>${d.g.season} ${esc(GT.periodLabel(d.g.period, d.g.week))}: ${GT.pts(d.g.pts)}`; } },
             xAxis: { type: 'value', name: 'Career games played', nameLocation: 'middle', nameGap: 26, nameTextStyle: { color: muted }, min: 1, max: maxN, axisLabel: { color: muted }, splitLine: { lineStyle: { color: grid } } },

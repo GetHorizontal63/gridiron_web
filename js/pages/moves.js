@@ -250,7 +250,7 @@
                 const ss = [...new Set(trades.map(t => t.season))].sort();
                 mount('c-time', {
                     grid: { left: 36, right: 44, top: 24, bottom: 26 }, tooltip: { ...tip, trigger: 'axis' },
-                    legend: { top: 0, right: 0, textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+                    legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
                     xAxis: ax({ type: 'category', data: ss.map(String) }), yAxis: [ax({ type: 'value', minInterval: 1 }), ax({ type: 'value', splitLine: { show: false } })],
                     series: [{ name: 'Trades', type: 'bar', barMaxWidth: 26, itemStyle: { color: C.accent }, data: ss.map(s => trades.filter(t => t.season === s && (!focus || t.sides.some(x => x.oid === focus))).length) },
                              { name: 'Avg margin', type: 'line', yAxisIndex: 1, symbolSize: 6, itemStyle: { color: C.ink }, lineStyle: { color: C.ink },
@@ -404,7 +404,7 @@
             const count = t => buckets.map(x => list.filter(m => key(m) === x && m.type === t).length);
             mount('c-activity', {
                 grid: { left: 36, right: 14, top: 28, bottom: 26 }, tooltip: { ...tip, trigger: 'axis', axisPointer: { type: 'shadow' } },
-                legend: { top: 0, right: 0, textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+                legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
                 xAxis: ax({ type: 'category', data: buckets.map(x => ALL ? String(x) : `W${x}`) }), yAxis: ax({ type: 'value', minInterval: 1 }),
                 series: [['Waiver claim', C.accent], ['Free agent', C.ink], ['Drop', C.red]].map(([t, c]) => ({ name: t, type: 'bar', stack: 'a', barMaxWidth: 26, itemStyle: { color: c }, data: count(t) }))
             });
@@ -425,7 +425,7 @@
             const byPos = t => POS.map(p => +pick.filter(m => m.type === t && (m.ins[0] || {}).pos === p).reduce((s, m) => s + (m.stIn || 0), 0).toFixed(1));
             mount('c-pos', {
                 grid: { left: 46, right: 14, top: 28, bottom: 26 }, tooltip: { ...tip, trigger: 'axis', axisPointer: { type: 'shadow' } },
-                legend: { top: 0, right: 0, textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+                legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
                 xAxis: ax({ type: 'category', data: POS }), yAxis: ax({ type: 'value' }),
                 series: [['Waiver claim', C.accent], ['Free agent', C.ink]].map(([t, c]) => ({ name: t, type: 'bar', stack: 'a', barMaxWidth: 34, itemStyle: { color: c }, data: byPos(t) }))
             });

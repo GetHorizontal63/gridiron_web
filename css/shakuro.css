@@ -520,9 +520,9 @@ body[data-section="players"] .card-row{margin-top:-70px}
 .ro-cell b{display:block;font-size:13px;font-weight:800}
 .ro-cell span{display:block;font-size:9.5px;font-weight:600;opacity:.85}
 .ro-empty{background:var(--surface-2)}
-.ro-legend{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;font-size:10.5px;font-weight:600;color:var(--muted)}
+.ro-legend{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;margin-top:14px;font-size:10.5px;font-weight:600;color:var(--muted)}
 .ro-bar{display:inline-block;width:160px;height:10px;background:linear-gradient(90deg,hsl(0,52%,42%),hsl(62,52%,42%),hsl(125,52%,42%))}
-.ro-key{margin-left:auto}
+.ro-key{margin-left:14px}   /* centred with the rest of the legend row */
 
 /* Scorigami */
 .scori-body{position:relative;display:flex;justify-content:center}
@@ -660,7 +660,7 @@ img[src$="nfl-logos/nyj.png"]{filter:brightness(0) saturate(100%) invert(24%) se
 .an-bar-w{fill:var(--accent)}
 .an-bar-l{fill:var(--line-strong)}
 .an-avg-line{fill:none;stroke:var(--ink);stroke-width:2;stroke-dasharray:5 4}
-.an-legend{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:10.5px;font-weight:600;color:var(--muted)}
+.an-legend{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;margin-top:12px;font-size:10.5px;font-weight:600;color:var(--muted)}
 .an-scale{width:150px;height:9px;background:linear-gradient(90deg,rgb(52,94,168),rgb(196,196,196),rgb(211,47,47))}
 .an-note{font-size:11px;color:var(--muted);margin-top:8px;max-width:900px;line-height:1.5}
 @media (max-width:900px){ .an-cols{grid-template-columns:1fr} .an-grade{width:150px} }
@@ -893,7 +893,7 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 .mv-ring.sm{width:26px;height:26px;font-size:12px}
 .mv-ring.none{background:var(--track);color:var(--muted)}
 .mv-ring.prov{outline:2px dashed var(--line-strong);outline-offset:2px}
-.mv-key{display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-size:10.5px;color:var(--muted);margin:10px 0 0}
+.mv-key{display:flex;flex-wrap:nowrap;justify-content:center;white-space:nowrap;overflow-x:auto;gap:16px;align-items:center;font-size:10.5px;color:var(--muted);margin:10px 0 0}
 .mv-key span{display:inline-flex;align-items:center;gap:6px}
 .mv-section{margin-top:34px}
 .mv-section > .panel-head{margin-bottom:12px}
@@ -1027,3 +1027,7 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 .sg-list .sg-val{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .sg-list .sg-val b{display:block;font-size:12px}
 .sg-list .sg-val small{display:block;font-size:9.5px;color:var(--muted)}
+
+/* one-line legends: the scrollbar of a key row that overflows on a phone stays out of sight */
+.ro-legend,.an-legend,.mv-key{scrollbar-width:none}
+.ro-legend::-webkit-scrollbar,.an-legend::-webkit-scrollbar,.mv-key::-webkit-scrollbar{display:none}

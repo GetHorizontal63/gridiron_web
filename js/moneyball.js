@@ -153,7 +153,7 @@ window.MONEYBALL = (() => {
         // 1. scoring distribution + win curve
         mount('mb-dist', {
             grid: { left: 46, right: 46, top: 30, bottom: 30 },
-            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 11 } },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: c.muted, fontSize: 11 } },
             tooltip: { trigger: 'axis', formatter: ps => `<b>${ps[0].name}–${Number(ps[0].name) + 9.9}</b><br>` + ps.map(p => `${p.seriesName}: ${p.seriesName === 'Games' ? p.value : p.value == null ? '-' : p.value + '%'}`).join('<br>') },
             xAxis: { type: 'category', data: A.bands.map(x => String(x.b)), axisLabel: { color: c.muted } },
             yAxis: [{ type: 'value', name: 'Games', nameTextStyle: { color: c.muted }, ...axis }, { type: 'value', name: 'Won', min: 0, max: 100, axisLabel: { color: c.muted, formatter: '{value}%' }, splitLine: { show: false } }],
@@ -165,7 +165,7 @@ window.MONEYBALL = (() => {
         // 2. wins -> playoffs
         mount('mb-wins', {
             grid: { left: 46, right: 16, top: 30, bottom: 34 },
-            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 11 } },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: c.muted, fontSize: 11 } },
             tooltip: { trigger: 'axis', formatter: ps => `<b>${ps[0].name} wins</b> (${A.byWins[ps[0].dataIndex].n} teams)<br>` + ps.map(p => `${p.seriesName}: ${p.value}%`).join('<br>') },
             xAxis: { type: 'category', name: 'Regular-season wins', nameLocation: 'middle', nameGap: 22, nameTextStyle: { color: c.muted }, data: A.byWins.map(x => String(x.w)), axisLabel: { color: c.muted } },
             yAxis: { type: 'value', min: 0, max: 100, axisLabel: { color: c.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: c.grid } } },
@@ -176,7 +176,7 @@ window.MONEYBALL = (() => {
         const xr = [Math.floor(Math.min(...A.teams.map(t => t.ppg)) / 5) * 5, Math.ceil(Math.max(...A.teams.map(t => t.ppg)) / 5) * 5];
         mount('mb-ppg', {
             grid: { left: 40, right: 16, top: 30, bottom: 36 },
-            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 11 } },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: c.muted, fontSize: 11 } },
             tooltip: { formatter: p => p.data && p.data.t ? `<b>${esc(p.data.t.owner)} ${p.data.t.season}</b><br>${pts(p.data.t.ppg)} per game · ${p.data.t.wins}-${p.data.t.losses}` : '' },
             xAxis: { type: 'value', name: 'Points per game', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.muted }, min: xr[0], max: xr[1], ...axis },
             yAxis: { type: 'value', name: 'Wins', nameTextStyle: { color: c.muted }, min: 0, ...axis },
@@ -323,7 +323,7 @@ window.MONEYBALL = (() => {
         const mountP = (id, option) => { const ch = echarts.init(host.querySelector(`#${id}`)); ch.setOption({ textStyle: { fontFamily: 'Inter, sans-serif' }, animationDuration: 300, ...option }); posCharts.push(ch); };
         mountP('mbp-curve', {
             grid: { left: 44, right: 16, top: 30, bottom: 36 },
-            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
             tooltip: { trigger: 'item', formatter: p => `<b>${p.seriesName}</b><br>${pts(p.value[0])} per starter → team won ${Math.round(p.value[1])}%` },
             xAxis: { type: 'value', name: 'Points per starter', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.muted }, axisLabel: { color: c.muted }, splitLine: { lineStyle: { color: c.grid } } },
             yAxis: { type: 'value', min: 0, max: 100, axisLabel: { color: c.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: c.grid } } },
@@ -333,7 +333,7 @@ window.MONEYBALL = (() => {
         });
         mountP('mbp-value', {
             grid: { left: 40, right: 12, top: 30, bottom: 26 },
-            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: v => `${v}%` },
             xAxis: { type: 'category', data: A.value.map(v => v.pos), axisLabel: { color: c.muted } },
             yAxis: { type: 'value', axisLabel: { color: c.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: c.grid } } },

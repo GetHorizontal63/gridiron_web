@@ -228,7 +228,7 @@
         const chart = echarts.init(document.getElementById('mgr-stream-chart'));
         chart.setOption({
             textStyle: { fontFamily: 'Inter, sans-serif' }, grid: { left: 40, right: 14, top: 28, bottom: 26 },
-            legend: { top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 },
             tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 } },
             xAxis: { type: 'category', data: cats, axisLabel: { color: c.muted, fontSize: 10 } },
             yAxis: { type: 'value', axisLabel: { color: c.muted, fontSize: 10 }, splitLine: { lineStyle: { color: c.grid } } },

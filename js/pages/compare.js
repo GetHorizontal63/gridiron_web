@@ -101,7 +101,7 @@
     window.addEventListener('resize', () => charts.forEach(c => c.resize()));
     const C = () => ({ ink: SITE.color('ink'), muted: SITE.color('muted'), grid: SITE.color('track'), line: SITE.color('line-strong'), win: SITE.color('win'), loss: SITE.color('loss') });
     const tipStyle = { backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 } };
-    const legend = c => ({ top: 0, right: 0, textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 });
+    const legend = c => ({ type: 'scroll', top: 0, left: 'center', textStyle: { color: c.muted, fontSize: 10 }, itemWidth: 10, itemHeight: 10 });
 
     // ---------------------------------------------------------------- chips (players chosen; sides in rest-of-season mode)
     function chips() {

@@ -402,7 +402,7 @@
         });
         mount('c-cal', {
             grid: { left: 44, right: 16, top: 28, bottom: 30 },
-            legend: { top: 0, right: 0, itemWidth: 12, itemHeight: 8, textStyle: { fontSize: 10, color: C.muted } },
+            legend: { type: 'scroll', top: 0, left: 'center', itemWidth: 12, itemHeight: 8, textStyle: { fontSize: 10, color: C.muted } },
             tooltip: { trigger: 'axis', formatter: ps => `<b>${ps[0].name}</b> favorites (${bins[ps[0].dataIndex].n} games)<br>` + ps.map(p => `${p.seriesName}: ${p.value == null ? '-' : p.value.toFixed(1) + '%'}`).join('<br>') },
             xAxis: { type: 'category', data: bins.map(x => x.label), axisLabel: { color: C.muted, fontSize: 10 } },
             yAxis: { type: 'value', min: 40, max: 100, axisLabel: { formatter: '{value}%', color: C.muted }, splitLine: { lineStyle: { color: C.grid } } },

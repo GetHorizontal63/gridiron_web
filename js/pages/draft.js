@@ -250,7 +250,7 @@
         document.getElementById('c-curve-sub').textContent = `${MODE_TXT()} surplus of every pick vs what its slot is worth. Coloured by position.`;
         mount('c-curve', {
             grid: { left: 46, right: 14, top: 26, bottom: 36 },
-            legend: { top: 0, right: 0, textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 9, itemHeight: 9 },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 9, itemHeight: 9 },
             tooltip: { ...tip, formatter: p => `<b>${esc(p.data.p.name)}</b> · ${pickLabel(p.data.p)} ${esc(p.data.p.mgr)}<br>${MODE_TXT()} surplus ${sgn(p.data.p[key])}` },
             xAxis: ax({ type: 'value', name: 'Overall pick', nameLocation: 'middle', nameGap: 22, nameTextStyle: { color: C.muted, fontSize: 10 }, max: picks.length }),
             yAxis: ax({ type: 'value' }),
@@ -275,7 +275,7 @@
         const rs = Array.from({ length: rounds }, (_, i) => i + 1).filter(r => !f.round || r === f.round);
         mount('c-build', {
             grid: { left: 36, right: 14, top: 26, bottom: 26 },
-            legend: { top: 0, right: 0, textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 9, itemHeight: 9 },
+            legend: { type: 'scroll', top: 0, left: 'center', textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 9, itemHeight: 9 },
             tooltip: { ...tip, trigger: 'axis', axisPointer: { type: 'shadow' } },
             xAxis: ax({ type: 'category', data: rs.map(r => `R${r}`) }), yAxis: ax({ type: 'value', minInterval: 1 }),
             series: Object.keys(POS_COLOR).filter(pos => base.some(p => p.pos === pos)).map(pos => ({
