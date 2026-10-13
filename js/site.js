@@ -12,6 +12,7 @@
             { key: 'schedule', label: 'Schedule & Results', href: 'pages/managers/schedule.html', needs: 'm' },
             { key: 'roster-history', label: 'Roster History', href: 'pages/managers/roster-history.html', needs: 'm' },
             { key: 'stats-history', label: 'Manager Stats History', href: 'pages/managers/stats-history.html', needs: 'm' },
+            { key: 'vs-nfl', label: 'Vs the NFL', href: 'pages/managers/vs-nfl.html', needs: 'm' },
             { key: 'where-we-marched', label: 'Where We Marched', href: 'pages/managers/where-we-marched.html', menuOnly: true }   // menu only, not a manager tab
         ] },
         { key: 'players', label: 'Players', href: 'pages/players/index.html', children: [
@@ -45,7 +46,8 @@
             { key: 'managers', label: 'Managers', href: 'pages/past-seasons/managers.html' },
             { key: 'trades', label: 'Trades', href: 'pages/past-seasons/trades.html' },
             { key: 'free-agency', label: 'Free Agency', href: 'pages/past-seasons/free-agency.html' },
-            { key: 'draft', label: 'Draft Grades', href: 'pages/past-seasons/draft.html' }
+            { key: 'draft', label: 'Draft Grades', href: 'pages/past-seasons/draft.html' },
+            { key: 'moments', label: 'Historic League Moments', href: 'pages/past-seasons/moments.html', menuOnly: true }   // cross-season: tab only on All Seasons
         ] }
     ];
     const NAV = [{ key: 'feed', label: 'Stats', href: 'pages/stats.html' }, ...SITE_MAP.filter(g => !g.hidden).map(({ key, label, href }) => ({ key, label, href }))];

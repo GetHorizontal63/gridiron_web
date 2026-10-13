@@ -576,5 +576,129 @@
             <p class="an-note">Percentiles compare ${esc(mgr.name)} with ${CAREER ? `every manager's pooled regular seasons (${span}); managers need ${minGames}+ games to count` : `every manager in the ${season} regular season`}. Luck rows are shown but left out of the grades. All-play win % is the record against every other team every week. Lineup efficiency and FP+ match the Recordbook.</p>`;
     }
 
-    ({ overview, schedule, 'roster-history': rosterHistory, 'stats-history': statsHistory })[page]();
+    // ============================================================ VS THE NFL
+    // The manager against the NFL GMs (nflgm.js): every NFL team's own roster played as a fantasy team each week.
+    // Pick a team: record and margin against it, week by week, and the two lineups side by side for any week.
+    async function vsNfl() {
+        const [teams, gmAll] = await Promise.all([NG.teams(), CAREER ? Promise.all(seasons.map(s => NG.weeks(s).then(l => l.map(r => ({ ...r, season: s }))))).then(l => l.flat())
+                                                                        : NG.weeks(season).then(l => l.map(r => ({ ...r, season })))]);
+        const mine = inSeason.filter(g => g.pf != null);
+        const nameOf = Object.fromEntries(teams.map(t => [t.abbr, t.name]));
+        const NFL_TIP = 'An NFL GM is an NFL team played as a fantasy team: each week, the best legal lineup in this league\'s format from that team\'s own players, D/ST and head coach included. Proj picks it by ESPN\'s projections and scores it with what the players really scored, the way a manager has to pick. Best picks it with hindsight. A team on its bye has no lineup that week.';
+        let kind = param('kind') === 'best' ? 'best' : 'proj';
+        const key = (s, w) => `${s}-${w}`;
+        // every NFL team against this manager, in the weeks both had a score
+        const lines = () => {
+            const gm = gmAll.filter(r => r.kind === kind), byKey = {};
+            gm.forEach(r => { (byKey[key(r.season, r.week)] = byKey[key(r.season, r.week)] || []).push(r); });
+            const out = {};
+            teams.forEach(t => { out[t.abbr] = { abbr: t.abbr, name: t.name, w: 0, l: 0, t: 0, margin: 0, g: 0, pts: 0 }; });
+            mine.forEach(g => (byKey[key(g.season, g.week)] || []).forEach(r => {
+                const o = out[r.team]; if (!o) return;
+                o.g++; o.pts += r.score; o.margin += g.pf - r.score;
+                if (g.pf > r.score) o.w++; else if (g.pf < r.score) o.l++; else o.t++;
+            }));
+            return Object.values(out).filter(o => o.g).map(o => ({ ...o, ppg: o.pts / o.g, avgMargin: o.margin / o.g }));
+        };
+        let ls = lines();
+        if (!ls.length) { content.innerHTML = `<div class="wrap page-pad"><p class="muted" style="margin-top:34px">No NFL GM data for ${label}.</p></div>`; return; }
+        const initial = teams.find(t => t.abbr === param('team')) ? param('team') : ls.slice().sort((x, y) => y.ppg - x.ppg)[0].abbr;
+        let pick = initial;
+        const sg = v => `${v >= 0 ? '+' : ''}${GT.pts(v)}`;
+        content.innerHTML = `<div class="wrap page-pad">
+            <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${esc(mgr.name)} · ${label}</div><h2 class="section-title">Vs the NFL</h2>
+                <p class="section-copy">Every NFL team played as a fantasy team in this league's format, from its own roster. Pick a front office and see how ${esc(mgr.name)}'s lineups stack up.</p></div>
+                <div class="vn-ctl"><label class="sx-f"><span>NFL team</span><select class="select" id="vn-team">${teams.slice().sort((x, y) => x.name.localeCompare(y.name)).map(t =>
+                    `<option value="${t.abbr}"${t.abbr === pick ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
+                    <span class="seg" id="vn-kind"><button data-k="proj"${kind === 'proj' ? ' class="on"' : ''} data-tip="${esc(NFL_TIP)}">Proj</button><button data-k="best"${kind === 'best' ? ' class="on"' : ''} data-tip="Best: each NFL roster's best lineup in hindsight.">Best</button></span></div></div>
+            <div class="vn-team" id="vn-head"></div>
+            <div class="db-kpis vn-kpis" id="vn-kpis"></div>
+            ${CAREER ? '' : `<div class="panel"><h3 class="panel-title" style="margin-bottom:10px">Week by Week</h3><div id="vn-chart" class="vn-chart"></div></div>
+            <div class="panel"><div class="panel-head" style="margin-bottom:10px"><h3 class="panel-title">Lineup vs Lineup</h3>
+                <select class="select" id="vn-week"></select></div><div class="vn-lineups" id="vn-lineups"></div></div>`}
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px" data-tip="${esc(NFL_TIP)}">Against All 32</h3>
+                <div class="table-scroll"><table class="data-table" style="min-width:640px">${SITE.cols('36%', '14%', '16%', '16%', '18%')}<thead><tr>
+                    <th>NFL GM</th><th class="num">Record</th><th class="num" data-tip="${esc(`${mgr.name}'s average points a week over (+) or under (-) that NFL GM, in the weeks both played.`)}">Avg margin</th>
+                    <th class="num">NFL pts / wk</th><th class="num" data-tip="Weeks both had a score (the NFL team's byes are left out).">Weeks</th></tr></thead><tbody id="vn-rows"></tbody></table></div></div></div>`;
+        let chart;
+        const draw = () => {
+            const o = ls.find(x => x.abbr === pick) || { w: 0, l: 0, t: 0, avgMargin: 0, ppg: 0, g: 0 };
+            const myPpg = mine.length ? mine.reduce((t, g) => t + g.pf, 0) / mine.length : 0;
+            const rank = 1 + ls.filter(x => x.ppg > myPpg).length;
+            const winning = ls.filter(x => x.w > x.l).length;
+            document.getElementById('vn-head').innerHTML = `<img src="${GT.logo(mgr.name)}" alt=""><b>${esc(mgr.name)}</b><span>vs</span><b>${esc(nameOf[pick] || pick)}</b><img src="${NG.logo(pick)}" alt="">`;
+            const kpi = (l, v, s, tip = '') => `<div class="db-kpi"><span${tip ? ` data-tip="${esc(tip)}"` : ''}>${l}</span><b>${v}</b><small>${s}</small></div>`;
+            document.getElementById('vn-kpis').innerHTML =
+                kpi(`Record vs ${esc(pick)}`, `${o.w}-${o.l}${o.t ? '-' + o.t : ''}`, `${o.g} weeks both played`) +
+                kpi('Avg margin', sg(o.avgMargin), `${GT.pts(myPpg)} vs ${GT.pts(o.ppg)} a week`) +
+                kpi('Rank among NFL GMs', `${rank} of ${ls.length + 1}`, `by points a week, ${kind === 'proj' ? 'NFL picked by projection' : 'NFL picked with hindsight'}`, 'Where this manager\'s points a week would rank if he were one of the NFL GMs.') +
+                kpi('Winning record against', `${winning} of ${ls.length}`, 'NFL GMs');
+            document.getElementById('vn-rows').innerHTML = ls.slice().sort((x, y) => y.avgMargin - x.avgMargin).map(x => `<tr class="row-pick ${x.abbr === pick ? 'me' : ''}" data-t="${x.abbr}">
+                <td><span class="team-cell"><img src="${NG.logo(x.abbr)}" alt=""><span>${esc(x.name)}</span></span></td><td class="num"><b>${x.w}-${x.l}${x.t ? '-' + x.t : ''}</b></td>
+                <td class="num ${x.avgMargin >= 0 ? 'win' : 'loss'}">${sg(x.avgMargin)}</td><td class="num">${GT.pts(x.ppg)}</td><td class="num">${x.g}</td></tr>`).join('');
+            document.querySelectorAll('#vn-rows tr').forEach(tr => tr.addEventListener('click', () => setTeam(tr.dataset.t)));
+            if (CAREER) return;
+            // week by week, and the week picker for the lineups
+            const gm = gmAll.filter(r => r.kind === kind && r.team === pick);
+            const wks = mine.map(g => g.week);
+            const scoreOf = w => (gm.find(r => r.week === w) || {}).score;
+            const C = { accent: SITE.color('accent'), ink: SITE.color('ink'), muted: SITE.color('muted'), line: SITE.color('line-strong'), grid: SITE.color('track') };
+            if (!chart) chart = echarts.init(document.getElementById('vn-chart'));
+            chart.setOption({
+                textStyle: { fontFamily: 'Inter, sans-serif' }, animationDurationUpdate: 300,
+                tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 }, valueFormatter: v => v == null ? 'bye' : GT.pts(v) },
+                legend: { top: 0, left: 'center', textStyle: { color: C.muted, fontSize: 10 } },
+                grid: { left: 40, right: 12, top: 30, bottom: 24 },
+                xAxis: { type: 'category', data: mine.map(g => `W${g.week}`), axisLabel: { color: C.muted, fontSize: 10 }, axisLine: { lineStyle: { color: C.line } } },
+                yAxis: { type: 'value', min: v => Math.floor(v.min / 20) * 20, axisLabel: { color: C.muted, fontSize: 10 }, splitLine: { lineStyle: { color: C.grid } } },
+                series: [
+                    { name: mgr.name, type: 'bar', barMaxWidth: 18, itemStyle: { color: C.accent }, data: mine.map(g => ({ value: g.pf, itemStyle: { color: scoreOf(g.week) == null || g.pf >= scoreOf(g.week) ? C.accent : C.line } })) },
+                    { name: nameOf[pick] || pick, type: 'line', data: wks.map(scoreOf), connectNulls: false, lineStyle: { color: C.ink, width: 2 }, itemStyle: { color: C.ink }, symbolSize: 6 }
+                ]
+            }, false);
+            const sel = document.getElementById('vn-week');
+            const both = mine.filter(g => scoreOf(g.week) != null).map(g => g.week);
+            const keep = Number(sel.value);
+            sel.innerHTML = both.map(w => `<option value="${w}">Week ${w}</option>`).join('');
+            sel.value = both.includes(keep) ? keep : both[both.length - 1];
+            showWeek();
+        };
+        const ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'P', 'D/ST', 'HC'];
+        const bySlot = l => l.slice().sort((x, y) => ORDER.indexOf(x.slot) - ORDER.indexOf(y.slot));
+        async function showWeek() {
+            const w = Number(document.getElementById('vn-week').value);
+            if (!w) { document.getElementById('vn-lineups').innerHTML = '<p class="muted">No week where both played.</p>'; return; }
+            const [nfl, me] = await Promise.all([NG.lineup(season, w, pick, kind), GT.query(`
+                SELECT frp.slot_position AS slot, frp.player_id AS pid, p.name, p.position AS pos, frp.actual_points AS pts, frp.projected_points AS proj
+                FROM fantasy_roster_players frp JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id JOIN players p ON p.player_id = frp.player_id
+                WHERE fr.season = $s AND fr.week = $w AND fr.owner_id = $o AND frp.slot_position NOT IN ('BE', 'IR')`, { $s: season, $w: w, $o: mgr.id })]);
+            const a = bySlot(me), bb = bySlot(nfl), n = Math.max(a.length, bb.length);
+            const total = l => l.reduce((t, p) => t + (p.pts || 0), 0);
+            const ta = total(a), tb = total(bb);
+            const cell = p => p ? `<td class="muted">${esc(p.slot)}</td><td>${p.pid > 0 ? `<a href="${url(`pages/players/stats.html?id=${p.pid}`)}">${esc(p.name)}</a>` : esc(p.name)} <span class="muted">${esc(p.pos)}</span></td>
+                <td class="num">${GT.pts(p.proj || 0)}</td><td class="num"><b>${GT.pts(p.pts || 0)}</b></td>` : '<td></td><td></td><td></td><td></td>';
+            const table = (title, logo, list, sum, win) => `<div class="vn-lu"><div class="vn-lu-h ${win ? 'win' : ''}"><img src="${logo}" alt=""><b>${esc(title)}</b><span>${GT.pts(sum)}</span></div>
+                <table class="data-table">${SITE.cols('14%', '52%', '17%', '17%')}<thead><tr><th>Slot</th><th>Player</th><th class="num">Proj</th><th class="num">Pts</th></tr></thead>
+                <tbody>${Array.from({ length: n }, (_, k) => `<tr>${cell(list[k])}</tr>`).join('')}</tbody></table></div>`;
+            document.getElementById('vn-lineups').innerHTML = table(mgr.name, GT.logo(mgr.name), a, ta, ta > tb) + table(`${nameOf[pick] || pick} (${kind === 'proj' ? 'Proj' : 'Best'})`, NG.logo(pick), bb, tb, tb > ta);
+        }
+        function setTeam(t) {
+            pick = t;
+            document.getElementById('vn-team').value = t;
+            const u = new URL(location.href); u.searchParams.set('team', t); history.replaceState(null, '', u);
+            draw();
+        }
+        document.getElementById('vn-team').addEventListener('change', e => setTeam(e.target.value));
+        document.querySelectorAll('#vn-kind button').forEach(btn => btn.addEventListener('click', () => {
+            kind = btn.dataset.k;
+            document.querySelectorAll('#vn-kind button').forEach(x => x.classList.toggle('on', x === btn));
+            const u = new URL(location.href); u.searchParams.set('kind', kind); history.replaceState(null, '', u);
+            ls = lines(); draw();
+        }));
+        if (!CAREER) document.getElementById('vn-week').addEventListener('change', showWeek);
+        window.addEventListener('resize', () => chart && chart.resize());
+        draw();
+    }
+
+    ({ overview, schedule, 'roster-history': rosterHistory, 'stats-history': statsHistory, 'vs-nfl': vsNfl })[page]();
 })();

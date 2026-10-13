@@ -11,7 +11,8 @@
     // ============================================================ ALL SEASONS (the Past Seasons landing page)
     if (page === 'index') {
         SITE.subHeader({ crumbs: [['Past Seasons']],
-                         tabs: [{ label: 'All Seasons', href: url('pages/past-seasons/index.html'), active: true }] });
+                         tabs: [{ label: 'All Seasons', href: url('pages/past-seasons/index.html'), active: true },
+                                { label: 'Historic League Moments', href: url('pages/past-seasons/moments.html') }] });
         SITE.hero({ title: 'Past Seasons', size: 'short', dots: false, image: 'background-7.png',
                     meta: [`${seasonList.length} seasons of Grass Touchers FFL · ${seasonList[seasonList.length - 1]}-${seasonList[0]}`] });
         const [placeRows, recs, weeks] = await Promise.all([
@@ -174,9 +175,11 @@
                     <div class="tag">${g.live ? 'Live' : esc(GT.periodLabel(g.period, g.week))}</div></li>`).join('') || '<li class="muted">No games yet.</li>'}</ul>
             </section>
             <section class="an-section" id="season-stream"></section>
+            <section class="an-section" id="season-nfl"></section>
             <section class="an-section" id="season-quads"></section></div>`;
         bindSeason();
         seasonStream();
+        seasonNfl();
         seasonQuads();
     }
 
@@ -267,6 +270,77 @@
                      { name: 'Best Wire', type: 'line', symbolSize: 5, itemStyle: { color: c.red }, lineStyle: { color: c.red, type: 'dashed' }, data: wks.map(w => byWeek(w)[0].sb) }]
         });
         window.addEventListener('resize', () => chart.resize());
+    }
+
+    // the league against the NFL: every NFL team's own roster as a fantasy team each week (nflgm.js), managers and
+    // front offices ranked together; 'proj' = picked by ESPN's projections, 'best' = picked with hindsight
+    async function seasonNfl() {
+        const host = document.getElementById('season-nfl');
+        if (!host || !window.NG) return;
+        const [gmRows, teams, mgrRows] = await Promise.all([NG.weeks(season), NG.teams(), GT.query(`
+            SELECT m.week, o.display_name AS name, t.team_score AS pf FROM matchup_team_stats t JOIN matchups m ON m.game_id = t.game_id
+            JOIN owners o ON o.owner_id = t.owner_id WHERE m.season = $s AND t.team_score IS NOT NULL`, { $s: season })]);
+        if (!gmRows.length || !mgrRows.length) return;
+        const wks = [...new Set(mgrRows.map(r => r.week))].sort((x, y) => x - y);
+        const nameOf = Object.fromEntries(teams.map(t => [t.abbr, t.name]));
+        const NFL_TIP = 'An NFL GM is an NFL team played as a fantasy team: each week, the best legal lineup in this league\'s format from that team\'s own players (its QB, backs, receivers, tight end, kicker, punter, D/ST and head coach). Proj picks the lineup by ESPN\'s projections and scores it with what the players really scored, the way a manager has to pick. Best picks it with hindsight. A team on its bye has no lineup that week.';
+        let kind = 'proj';
+        const tile = (v, l, s, tip = '') => `<div class="stat-tile"><div class="v">${v}</div><div class="l"${tip ? ` data-tip="${esc(tip)}"` : ''}>${l}</div><div class="s">${s}</div></div>`;
+        const render = () => {
+            const gm = gmRows.filter(r => r.kind === kind && wks.includes(r.week));
+            const gmWeek = w => gm.filter(r => r.week === w);
+            // every manager-week against every NFL team-week of the same week
+            let w_ = 0, l_ = 0;
+            const mgrLine = {};
+            mgrRows.forEach(r => {
+                const field = gmWeek(r.week);
+                const beat = field.filter(x => r.pf > x.score).length, lost = field.filter(x => r.pf < x.score).length;
+                w_ += beat; l_ += lost;
+                const m = mgrLine[r.name] || (mgrLine[r.name] = { name: r.name, g: 0, pts: 0, beat: 0, of: 0, hi: 0 });
+                m.g++; m.pts += r.pf; m.beat += beat; m.of += field.length; m.hi = Math.max(m.hi, r.pf);
+            });
+            const nflLine = {};
+            gm.forEach(r => {
+                const mgrs = mgrRows.filter(x => x.week === r.week);
+                const n = nflLine[r.team] || (nflLine[r.team] = { abbr: r.team, g: 0, pts: 0, beat: 0, of: 0, hi: 0 });
+                n.g++; n.pts += r.score; n.beat += mgrs.filter(x => r.score > x.pf).length; n.of += mgrs.length; n.hi = Math.max(n.hi, r.score);
+            });
+            const rows = [...Object.values(mgrLine).map(m => ({ ...m, type: 'mgr', ppg: m.pts / m.g })), ...Object.values(nflLine).map(n => ({ ...n, type: 'nfl', ppg: n.pts / n.g }))]
+                .sort((x, y) => y.ppg - x.ppg);
+            const nflRows = rows.filter(r => r.type === 'nfl'), mgrList = rows.filter(r => r.type === 'mgr');
+            const topNfl = nflRows[0], avgNfl = nflRows.reduce((t, r) => t + r.ppg, 0) / nflRows.length, avgMgr = mgrList.reduce((t, r) => t + r.ppg, 0) / mgrList.length;
+            const bestWeek = gm.slice().sort((x, y) => y.score - x.score)[0];
+            const pctTxt = v => v == null ? '-' : v.toFixed(3).replace(/^0/, '');
+            host.querySelector('#nfl-tiles').innerHTML =
+                tile(`${w_}-${l_}`, 'League vs the NFL', `${pctTxt(w_ / (w_ + l_ || 1))} · every manager-week vs every NFL team that week`, `Each manager's score against all ${nflRows.length} NFL GMs that played that week, added up. ${NFL_TIP}`) +
+                tile(GT.pts(avgNfl), 'NFL GM per week', `league average ${GT.pts(avgMgr)}`, 'The average NFL GM score per week, next to the average manager score.') +
+                tile(`<img class="nfl-ic" src="${NG.logo(topNfl.abbr)}" alt="">${esc(topNfl.abbr)}`, 'Best NFL GM', `${GT.pts(topNfl.ppg)} pts / week`, `The NFL team whose own roster scored the most per week in this format (${kind === 'proj' ? 'picked by projection' : 'picked with hindsight'}).`) +
+                tile(mgrList.filter(m => m.ppg > topNfl.ppg).length, 'Managers above every NFL GM', `of ${mgrList.length} managers`, 'Managers who scored more per week than the best NFL GM.') +
+                tile(`${GT.pts(bestWeek.score)}`, 'Best NFL GM week', `${esc(nameOf[bestWeek.team] || bestWeek.team)}, week ${bestWeek.week}`, 'The highest single-week score by any NFL GM this season.');
+            host.querySelector('#nfl-rows').innerHTML = rows.map((r, i) => {
+                const who = r.type === 'mgr' ? `<span class="team-cell"><img src="${GT.logo(r.name)}" alt="">${GT.managerLink(r.name, season)}</span>`
+                                             : `<span class="team-cell"><img src="${NG.logo(r.abbr)}" alt=""><span>${esc(nameOf[r.abbr] || r.abbr)}</span></span>`;
+                return `<tr class="${r.type === 'mgr' ? 'me' : ''}"><td class="num">${i + 1}</td><td>${who}</td><td class="muted">${r.type === 'mgr' ? 'Manager' : 'NFL GM'}</td>
+                    <td class="num">${r.g}</td><td class="num"><b>${GT.pts(r.ppg)}</b></td><td class="num">${GT.pts(r.hi)}</td>
+                    <td class="num">${pctTxt(r.of ? r.beat / r.of : null)}</td></tr>`;
+            }).join('');
+        };
+        host.innerHTML = `<div class="panel-head"><div><div class="eyebrow">${season} · ${wks.length} weeks</div><h2 class="section-title">Vs the NFL</h2>
+                <p class="section-copy" style="max-width:none">Every NFL team played as a fantasy team: each week the best lineup in this league's format from its own roster,
+                D/ST and head coach included. Proj picks the lineup by ESPN's projections, the way you have to; Best picks it with hindsight. How did the league's managers do against 32 NFL front offices?</p></div>
+                <span class="seg" id="nfl-kind"><button data-k="proj" class="on" data-tip="${esc(NFL_TIP)}">Proj</button><button data-k="best" data-tip="Best: each NFL roster's best lineup in hindsight.">Best</button></span></div>
+            <div class="stat-tiles" id="nfl-tiles" style="grid-template-columns:repeat(5,minmax(0,1fr))"></div>
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px" data-tip="${esc(`Managers and NFL GMs ranked by points per week. Vs the field = the share of the other side beaten in the same weeks: for a manager, NFL GMs; for an NFL GM, managers. ${NFL_TIP}`)}">Managers and NFL GMs</h3>
+                <div class="table-scroll"><table class="data-table" style="min-width:720px">${SITE.cols('7%', '35%', '14%', '9%', '12%', '11%', '12%')}<thead><tr>
+                    <th class="num">#</th><th>Team</th><th>Type</th><th class="num">Weeks</th><th class="num">Pts / wk</th><th class="num">High</th>
+                    <th class="num" data-tip="For a manager: the share of NFL GMs he outscored in the same weeks. For an NFL GM: the share of managers it outscored.">Vs the field</th></tr></thead>
+                    <tbody id="nfl-rows"></tbody></table></div></div>`;
+        host.querySelectorAll('#nfl-kind button').forEach(btn => btn.addEventListener('click', () => {
+            kind = btn.dataset.k;
+            host.querySelectorAll('#nfl-kind button').forEach(x => x.classList.toggle('on', x === btn));
+            render();
+        }));
+        render();
     }
 
     // the season's weekly score ranks: every manager's quads and rank spread (regular season)
