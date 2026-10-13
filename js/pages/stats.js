@@ -9,6 +9,7 @@
     const PLAYOFF = ['Post-WC', 'Post-WB', 'Championship'];
     const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
     const f1 = v => v == null || isNaN(v) ? '-' : GT.pts(v);
+    const f2 = v => v == null || isNaN(v) ? '-' : Number(v).toFixed(2);     // scores to the hundredth (xxx.xx)
     const pct = v => v == null || isNaN(v) ? '-' : `${(v * 100).toFixed(1)}%`;
     const sgn = v => v == null || isNaN(v) ? '-' : `${v > 0 ? '+' : ''}${GT.pts(v)}`;
     const recText = r => `${r.w}-${r.l}${r.t ? '-' + r.t : ''}`;
@@ -104,18 +105,23 @@
             }
         },
         'games': {
-            label: 'Games', filters: ['season', 'period', 'manager', 'result'], sort: ['pf', -1],
-            note: 'Every team score. Click a row for the game center.',
-            cols: [C('season', 'Season', 6, false), C('week', 'Week', 6, true), C('round', 'Round', 15, false),
-                   C('mgr', 'Manager', 14, false, r => mgrCell(r.mgr, r.season)), C('opp', 'Opponent', 14, false, r => r.opp ? mgrCell(r.opp, r.season) : '-'),
-                   C('pf', 'PF', 8, true, r => `<b>${f1(r.pf)}</b>`), C('pa', 'PA', 8, true, r => f1(r.pa)), C('margin', 'Margin', 8, true, r => sgn(r.margin)),
-                   C('res', 'Result', 6, false, r => `<span class="${r.res === 'W' ? 'win' : r.res === 'L' ? 'loss' : ''}">${r.res}</span>`),
-                   C('rank', 'Wk rank', 7, true, r => r.rank ? ord(r.rank) : '-'), C('bench', 'Bench', 8, true, r => f1(r.bench))],
+            label: 'Games', filters: ['season', 'period', 'manager'], sort: ['ws', -1],
+            note: "Every game once: winner, loser, both scores and where each ranked among that week's scores. Manager matches either side. Click a row for the game center.",
+            cols: [C('season', 'Season', 7, false), C('week', 'Week', 6, true), C('round', 'Round', 14, false),
+                   C('winner', 'Winner', 16, false, r => mgrCell(r.winner, r.season)), C('loser', 'Loser', 16, false, r => r.loser ? mgrCell(r.loser, r.season) : '-'),
+                   C('ws', 'Winner score', 9, true, r => `<b>${f2(r.ws)}</b>`, r => f2(r.ws)), C('ls', 'Loser score', 9, true, r => f2(r.ls), r => f2(r.ls)),
+                   C('margin', 'Margin', 8, true, r => r.tie ? '<span class="muted">Tie</span>' : f2(r.margin), r => f2(r.margin)),
+                   C('wr', 'Winner rank', 7.5, true, r => r.wr ? ord(r.wr) : '-'), C('lr', 'Loser rank', 7.5, true, r => r.lr ? ord(r.lr) : '-')],
             href: r => url(`pages/past-seasons/game-center.html?id=${r.gameId}`),
-            rows: f => games.filter(g => inRange(g.season, f) && inPeriod(g.period, f) && (!f.manager || g.id === f.manager))
-                .map(g => ({ ...g, round: GT.periodLabel(g.period, g.week).replace(/ W\d+$/, ''), margin: g.pf - g.pa,
-                             res: g.pf > g.pa ? 'W' : g.pf < g.pa ? 'L' : 'T' }))
-                .filter(r => !f.result || r.res === f.result)
+            rows: f => {
+                // one row per game: the winning side's row (a tie keeps the lower owner id as "winner"), paired with the other side
+                const byKey = new Map(games.map(g => [`${g.gameId}|${g.id}`, g]));
+                return games.filter(g => g.oppId && (g.pf > g.pa || (g.pf === g.pa && g.id < g.oppId)))
+                    .filter(g => inRange(g.season, f) && inPeriod(g.period, f) && (!f.manager || g.id === f.manager || g.oppId === f.manager))
+                    .map(g => { const o = byKey.get(`${g.gameId}|${g.oppId}`) || {};
+                        return { gameId: g.gameId, season: g.season, week: g.week, round: GT.periodLabel(g.period, g.week).replace(/ W\d+$/, ''),
+                                 winner: g.mgr, loser: g.opp, ws: g.pf, ls: g.pa, margin: g.pf - g.pa, tie: g.pf === g.pa, wr: g.rank, lr: o.rank }; });
+            }
         },
         'head-to-head': {
             label: 'Head to Head', filters: ['season', 'period', 'manager', 'min'], minLabel: 'Min games', sort: ['g', -1],

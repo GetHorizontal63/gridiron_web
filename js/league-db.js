@@ -32,11 +32,10 @@
         return rows(database.exec(sql, params));
     }
 
-    // League tiebreak, in order: record, head-to-head among the tied teams,
-    // point differential, points for. h2hOf(a, b) returns {w, l, t} for manager a
-    // against manager b (or null). Teams level on record are ranked by a
-    // mini-league among only the tied teams; teams that never met count as .500.
-    // 2019 is the exception: points for comes before point differential.
+    // League tiebreak after record. 2020-2025: head-to-head among the tied teams, point differential, points for.
+    // 2019: head-to-head, points for, point differential. 2026 on: point differential, then head-to-head, then points for.
+    // h2hOf(a, b) returns {w, l, t} for manager a against manager b (or null). Head-to-head is a mini-league among only
+    // the tied teams; teams that never met count as .500.
     function rankByTiebreak(teams, h2hOf, season) {
         const record = t => Number(t.wins) + 0.5 * Number(t.ties || 0);
         const pd = t => Number(t.pointsFor) - Number(t.pointsAgainst);
@@ -55,9 +54,10 @@
                     return [t, games ? (w + 0.5 * tied) / games : 0.5];
                 }));
                 const pf = t => Number(t.pointsFor);
-                group.sort((a, b) => (pct.get(b) - pct.get(a)) || (Number(season) === 2019
-                    ? (pf(b) - pf(a)) || (pd(b) - pd(a))
-                    : (pd(b) - pd(a)) || (pf(b) - pf(a))));
+                const s = Number(season);
+                group.sort((a, b) => s >= 2026
+                    ? (pd(b) - pd(a)) || (pct.get(b) - pct.get(a)) || (pf(b) - pf(a))
+                    : (pct.get(b) - pct.get(a)) || (s === 2019 ? (pf(b) - pf(a)) || (pd(b) - pd(a)) : (pd(b) - pd(a)) || (pf(b) - pf(a))));
             }
             ordered.push(...group);
         });

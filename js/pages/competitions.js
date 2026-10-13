@@ -359,7 +359,7 @@
     // ============================================================ STANDINGS
     function standings() {
         SITE.hero({ title: `${season} Standings`, size: 'short', dots: false, image: 'background-18.png',
-                    meta: ['Regular season · ranked by record, head-to-head, point differential, points for'] });
+                    meta: [`Regular season · ranked by record, ${season >= 2026 ? 'point differential, head-to-head' : 'head-to-head, point differential'}, points for`] });
         const byDiv = {};
         picture.divisionStandings.forEach(r => { (byDiv[r.divisionName] = byDiv[r.divisionName] || []).push(r); });
         content.innerHTML = `<div class="wrap page-pad">
@@ -437,7 +437,10 @@
                         const met = (a, c) => list.some(g => (g.home === a && g.away === c) || (g.home === c && g.away === a));
                         const allMet = left.every(a => left.every(c => a === c || met(a.owner, c.owner)));
                         const h2hOf = r => left.reduce((t, o) => o === r ? t : t + h2h(r.owner, o.owner), 0);
-                        const pick = left.slice().sort((x, y) => (allMet ? h2hOf(y) - h2hOf(x) : 0) || y.diff - x.diff || y.pf - x.pf || x.owner.localeCompare(y.owner))[0];
+                        // 2026 on: point differential first, then head-to-head; earlier seasons: head-to-head first
+                        const h2hCmp = (x, y) => allMet ? h2hOf(y) - h2hOf(x) : 0;
+                        const pick = left.slice().sort((x, y) => (season >= 2026 ? (y.diff - x.diff) || h2hCmp(x, y) : h2hCmp(x, y) || (y.diff - x.diff))
+                                                                 || y.pf - x.pf || x.owner.localeCompare(y.owner))[0];
                         seeded.push(pick); left.splice(left.indexOf(pick), 1);
                     }
                     i = j;
@@ -493,7 +496,7 @@
                     meta: [through ? `Projected from the standings through week ${through}` : 'No games played yet'] });
         content.innerHTML = `<div class="wrap page-pad">
             <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${season} · if the season ended today</div><h2 class="section-title">Bracket Outlook</h2>
-                <p class="section-copy" style="max-width:none">Seeds by win %, then head-to-head among tied teams, point differential and points for.
+                <p class="section-copy" style="max-width:none">Seeds by win %, then ${season >= 2026 ? 'point differential, head-to-head among tied teams' : 'head-to-head among tied teams, point differential'} and points for.
                 ${before ? `<span class="pj-up">▲</span> / <span class="pj-dn">▼</span> = moved since week ${played[played.length - 2]}.` : ''}</p></div>${seasonSelect()}</div>
             <div class="card-row two" style="margin-top:22px">${seedTable('A')}${seedTable('B')}</div>
             <div class="panel"><h3 class="panel-title" style="margin-bottom:14px">Championship</h3>

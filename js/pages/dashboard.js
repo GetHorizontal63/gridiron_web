@@ -73,7 +73,7 @@
     const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
     // Seeds within one division, the same procedure as the bracket outlook: win %, then head-to-head only when every
     // tied team has played every other, then point differential, then points for; restart after each pick.
-    function seedDivision(list, st) {
+    function seedDivision(list, st, diffFirst) {             // diffFirst: 2026 on, point differential before head-to-head
         const out = [], rows = list.slice().sort((x, y) => st.w[y] - st.w[x]);
         for (let i = 0; i < rows.length;) {
             let j = i; while (j < rows.length && st.w[rows[j]] === st.w[rows[i]]) j++;
@@ -84,7 +84,8 @@
                 const h = r => left.reduce((t, o) => o === r ? t : t + st.h2h[r][o], 0);
                 let best = left[0];
                 for (const r of left.slice(1)) {
-                    const d = (allMet ? h(r) - h(best) : 0) || (st.pf[r] - st.pa[r]) - (st.pf[best] - st.pa[best]) || st.pf[r] - st.pf[best];
+                    const hd = allMet ? h(r) - h(best) : 0, pdd = (st.pf[r] - st.pa[r]) - (st.pf[best] - st.pa[best]);
+                    const d = (diffFirst ? pdd || hd : hd || pdd) || st.pf[r] - st.pf[best];
                     if (d > 0) best = r;
                 }
                 out.push(best); left.splice(left.indexOf(best), 1);
@@ -137,7 +138,7 @@
                     st.met[a][c] = st.met[c][a] = 1;
                 });
             });
-            const seeds = model.divs.map(d => seedDivision(d.ids.map(id => idx[id]).filter(v => v != null), st));
+            const seeds = model.divs.map(d => seedDivision(d.ids.map(id => idx[id]).filter(v => v != null), st, model.s >= 2026));
             seeds.forEach((list, di) => list.forEach((t, si) => {
                 seedCount[t][si + 1]++;
                 const d = model.divs[di];
