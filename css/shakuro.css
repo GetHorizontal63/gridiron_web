@@ -33,6 +33,7 @@
     --display:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
     --ui:'Inter',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
     --wrap:1180px;
+    --ctl-h:36px;              /* one height for every dropdown and toggle group on the site */
 }
 :root[data-theme="dark"]{
     /* steel and coal, with the league logo yellow as the accent */
@@ -251,7 +252,7 @@ body[data-section="players"] .card-row{margin-top:-70px}
 .section-title{font-family:var(--display);font-weight:800;font-size:clamp(36px,5vw,58px);line-height:.92;text-transform:uppercase}
 .section-copy{margin-top:14px;color:var(--muted);font-size:12px;max-width:320px}
 .section-tools{margin-top:18px;display:flex;gap:8px;flex-wrap:wrap}
-.select{appearance:none;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23111' stroke-width='1.5' fill='none'/%3E%3C/svg%3E") no-repeat right 10px center;border:1px solid var(--line);padding:8px 30px 8px 12px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:1px}
+.select{height:var(--ctl-h);appearance:none;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23111' stroke-width='1.5' fill='none'/%3E%3C/svg%3E") no-repeat right 10px center;border:1px solid var(--line);padding:0 30px 0 12px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border-radius:1px}
 .select:hover{border-color:var(--ink)}
 .list-rows{list-style:none;border-top:1px solid var(--line)}
 .list-rows li{display:grid;grid-template-columns:30px minmax(0,1.6fr) minmax(0,.8fr) minmax(0,.7fr) minmax(0,1fr);gap:12px;align-items:center;height:51px;padding:0 4px;border-bottom:1px solid var(--line);font-size:12px}
@@ -291,8 +292,8 @@ body[data-section="players"] .card-row{margin-top:-70px}
 .stat-tile .v{font-family:var(--display);font-weight:800;font-size:36px;line-height:1}
 .stat-tile .l{font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:6px}
 .stat-tile .s{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.seg{display:inline-flex;border:1px solid var(--line);background:var(--surface)}
-.seg button{background:none;border:0;padding:8px 13px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;color:var(--muted)}
+.seg{display:inline-flex;height:var(--ctl-h);border:1px solid var(--line);background:var(--surface)}
+.seg button{height:100%;background:none;border:0;padding:0 13px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;color:var(--muted)}
 .seg button.on{background:var(--dark);color:#fff}
 
 /* grids of tiles (managers, players) */
@@ -752,9 +753,9 @@ img[src$="nfl-logos/nyj.png"]{filter:brightness(0) saturate(100%) invert(24%) se
 .sx-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:22px 0 14px}
 .sx-f{display:flex;flex-direction:column;gap:5px}
 .sx-f span{font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-.sx-f .select{height:38px;min-width:96px}
-.sx-f input{height:38px;width:190px;border:1px solid var(--line);background:var(--surface);padding:0 12px;font:inherit;font-size:12px}
-.sx-reset{height:38px;padding:0 14px;border:1px solid var(--line);background:none;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.sx-f .select{min-width:96px}
+.sx-f input{height:var(--ctl-h);width:190px;border:1px solid var(--line);background:var(--surface);padding:0 12px;font:inherit;font-size:12px}
+.sx-reset{height:var(--ctl-h);padding:0 14px;border:1px solid var(--line);background:none;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
 .sx-reset:hover{border-color:var(--ink)}
 .sx-table{min-width:1140px}
 .sx-sort{cursor:pointer;user-select:none;position:relative}
@@ -1144,8 +1145,8 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 .hm-retro-table td.hm-down{color:var(--loss);font-weight:700}
 
 .hm-bracket-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.hm-seg{display:flex;border:1px solid var(--line)}
-.hm-seg button{font:inherit;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:6px 12px;background:var(--surface);color:var(--muted);border:0;cursor:pointer}
+.hm-seg{display:flex;height:var(--ctl-h);border:1px solid var(--line)}
+.hm-seg button{height:100%;font:inherit;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:0 12px;background:var(--surface);color:var(--muted);border:0;cursor:pointer}
 .hm-seg button.on{background:var(--ink);color:var(--surface)}
 .hm-bk-t{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);margin:6px 0 2px}
 .hm-retro-panel .match div.me{background:rgba(var(--accent-rgb),.10)}
@@ -1269,3 +1270,20 @@ tr.row-pick{cursor:pointer}
 .hm-article{max-width:740px;margin:30px auto 0}
 .hm-article .hm-h{font-family:var(--display);font-weight:800;font-size:30px;line-height:1;text-transform:uppercase;margin:30px 0 10px}
 .hm-article p{font-size:16px;line-height:1.7;color:var(--ink-2);margin:0 0 14px}
+
+/* Stats: Player Regression */
+.rg-bar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.rg-bar .sx-f:first-of-type{margin-left:auto}             /* toggles on the left, dropdowns pushed right */
+/* the controls and the KPI row stay pinned under the site header; the charts scroll beneath them */
+.rg-sticky{position:sticky;top:60px;z-index:20;background:var(--bg);padding:10px 0 12px;margin:0 -2px;box-shadow:0 8px 12px -10px rgba(0,0,0,.25)}
+.rg-psel{width:220px}
+.rg-kpis{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:10px;margin-bottom:0}
+.rg-chart{width:100%;height:380px}
+.rg-chart-sm{width:100%;height:260px}
+.rg-search{width:240px}
+.rg-note{font-size:12.5px;line-height:1.6;margin-top:8px}
+.rg-v{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border:1px solid currentColor;white-space:nowrap}
+.rg-v.w{color:var(--win)}
+.rg-v.l{color:var(--loss)}
+@media (max-width:900px){ .rg-kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .rg-chart{height:300px}
+    .rg-sticky{position:static;box-shadow:none} .rg-psel{width:100%} }   /* on a phone the pinned block would cover half the screen */
