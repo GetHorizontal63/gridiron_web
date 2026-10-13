@@ -16,7 +16,7 @@
         GT.query(`SELECT m.move_id AS id, m.transaction_id AS tx, m.kind, m.season, m.effective_week AS week, m.occurred_at AS at,
                          m.owner_id AS oid, m.counterparty_owner_id AS cid, m.weeks_counted AS wc, m.pts_in AS ptsIn, m.pts_out AS ptsOut,
                          m.started_in AS stIn, m.started_out AS stOut, m.net_total AS net, m.net_started AS netSt, m.grade, m.provisional AS prov,
-                         m.evidence, m.real_wins AS rw, m.real_losses AS rl, m.alt_wins AS aw, m.alt_losses AS al, m.real_pd AS rpd, m.alt_pd AS apd,
+                         m.evidence, m.note, m.real_wins AS rw, m.real_losses AS rl, m.alt_wins AS aw, m.alt_losses AS al, m.real_pd AS rpd, m.alt_pd AS apd,
                          t.type AS txType
                   FROM transaction_moves m LEFT JOIN transactions t ON t.transaction_id = m.transaction_id
                   WHERE m.kind IN ${KINDS}`),
@@ -41,7 +41,8 @@
         const pl = byMove[m.id] || { in: [], out: [] };
         const elapsed = m.prov ? Math.max(0, (lastWeek[m.season] || 0) - (m.week || 1) + 1) : m.wc;
         let grade = m.grade, provGrade = false;
-        if (m.prov && elapsed > 0) { grade = letterOf(share(m.netSt / elapsed, rates[m.kind])); provGrade = true; }
+        const skip = m.note && (m.note.startsWith('stream') || (m.note.startsWith('round trip') && m.kind === 'DROP'));   // never graded
+        if (m.prov && elapsed > 0 && !skip) { grade = letterOf(share(m.netSt / elapsed, rates[m.kind])); provGrade = true; }
         const type = m.kind === 'TRADE' ? 'Trade' : m.kind === 'DROP' ? 'Drop' : m.txType === 'WAIVER' ? 'Waiver claim' : 'Free agent';
         return { ...m, ins: pl.in.sort(byRos), outs: pl.out.sort(byRos), elapsed, grade, provGrade, type,
                  mgr: name(m.oid), partner: m.cid ? name(m.cid) : '', gpa: grade ? EX.GPA[grade] : null,
@@ -74,7 +75,12 @@
     const player = p => p.pid > 0 ? `<a href="${url(`pages/players/stats.html?id=${p.pid}`)}">${esc(p.name)}</a>` : esc(p.name);
     const names = list => list.map(p => p.name).join(', ');
     const when = m => `${m.season} · Wk ${m.week || '-'}`;
-    const gradeTitle = m => m.provGrade ? `Provisional: ${GT.pts(m.netSt)} net started pts in ${m.elapsed} wk so far` : m.grade ? 'Final grade' : 'Not graded (no weeks left to measure)';
+    // note (python/transaction_grades.py): a released player the manager got back only counts until he returned
+    const NOTE = m => !m.note ? '' : m.note.startsWith('stream') ? ` Streaming position: ${m.note.replace(/^stream: /, '')}. Not graded; releasing a D/ST or head coach is never held against you.`
+                    : m.note.startsWith('round trip') ? ' Round trip: the player released was back on the roster within a week, so the release costs nothing.'
+                                                                  : ` The released player was re-added later (${m.note.replace(/^re-added later: /, '')}); the penalty stops that week.`;
+    const gradeTitle = m => (m.provGrade ? `Provisional: ${GT.pts(m.netSt)} net started pts in ${m.elapsed} wk so far.` : m.grade ? 'Final grade.'
+                             : m.note && (m.note.startsWith('stream') || (m.note.startsWith('round trip') && m.kind === 'DROP')) ? 'Not graded.' : 'Not graded (no weeks left to measure).') + NOTE(m);
     const ringOf = (m, small) => EX.ring(m.grade, { small, prov: m.provGrade, title: gradeTitle(m) });
     const gpaLetter = g => g == null ? null : g >= 3.5 ? 'A' : g >= 2.5 ? 'B' : g >= 1.5 ? 'C' : g >= 0.5 ? 'D' : 'F';
     const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');

@@ -306,6 +306,22 @@
         });
         addRecordCategory('single-game', 'Highest by Position', high);
         addRecordCategory('single-game', 'Lowest by Position', low);
+        // Contribution: one starter's points as a share of the whole starting lineup's points that week
+        // (a 40-point QB on a 100-point team = 40%). Weeks where the lineup scored nothing or less are left out.
+        const lineupTotal = new Map();
+        starts.forEach(x => { const k = `${x.season}|${x.week}|${x.owner}`; lineupTotal.set(k, (lineupTotal.get(k) || 0) + x.pts); });
+        const share = [];
+        SLOTS.forEach(([slot, name]) => {
+            const list = starts.filter(x => x.slot === slot).map(x => ({ x, total: lineupTotal.get(`${x.season}|${x.week}|${x.owner}`) }))
+                .filter(o => o.total > 0)
+                .map(({ x, total }) => ({ team: label(x), raw: 100 * x.pts / total, value: `${(100 * x.pts / total).toFixed(2)}%`,
+                                          detail: `${x.pts.toFixed(1)} of ${total.toFixed(1)}` }));
+            const key = `posShare${slot.replace('/', '')}`;
+            updateRecord(key, topN(list, 'high'));
+            share.push({ key, title: `${name} Contribution`, subtitle: "Share of the lineup's points" });
+        });
+        addRecordCategory('single-game', 'Contribution', share,
+            "A starter's points ÷ everything the starting lineup scored that week. A 40-point QB on a 100-point team = 40%.");
         updateRecord('benchHighTotal', ranked(benchTotals, 'high'));
         updateRecord('benchLowTotal', ranked(benchTotals, 'low'));
         updateRecord('benchHighPlayer', ranked(bench, 'high'));
