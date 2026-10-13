@@ -1261,3 +1261,7 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 .vn-lu-h.win span{color:var(--ink)}
 tr.row-pick{cursor:pointer}
 @media (max-width:900px){ .vn-kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .vn-lineups{grid-template-columns:1fr} }
+/* a season moment told as an article */
+.hm-article{max-width:740px;margin:30px auto 0}
+.hm-article .hm-h{font-family:var(--display);font-weight:800;font-size:30px;line-height:1;text-transform:uppercase;margin:30px 0 10px}
+.hm-article p{font-size:16px;line-height:1.7;color:var(--ink-2);margin:0 0 14px}

@@ -28,24 +28,167 @@
     if (!one) return listPage();
     detailPage(one);
 
+    // Playoff brackets drawn like the Playoff Bracket page (competitions.js bracketBoard): each later game sits between the
+    // two games that feed it, with connector lines. Championship: quarterfinals, semifinals, final; Gulag (loser advances):
+    // round 1, round 2, Chumpionship. games = a bracket log from python (moment_retro.py / moment_phantom.py).
+    // opts.order = first-round order per bracket so each later game's feeders sit side by side;
+    // opts.owner = the team to highlight; opts.fresh(g) = true when the pairing never happened for real (footer note).
+    function drawBrackets(hostId, games, opts = {}) {
+        const order = opts.order || { champ: [0, 2, 1, 3], gulag: [0, 2, 3, 1] };
+        const matchBox = g => {
+            const fresh = opts.fresh ? opts.fresh(g) : false;
+            const row = (n, s) => `<div class="${n === opts.owner ? 'me' : ''}"><img src="${GT.logo(n)}" alt=""><span class="${g.win === n ? 'w' : ''}">${esc(n)}</span><span class="s ${g.win === n ? 'w' : ''}">${f2(s)}</span></div>`;
+            return `<div class="match">${row(g.a, g.sa)}${row(g.b, g.sb)}<span class="match-open ${fresh ? 'hm-new' : 'hm-same'}">Week ${g.week}${fresh ? ' · new matchup' : ''}</span></div>`;
+        };
+        function board(rounds, names) {
+            const MH = 106, GAP = 18, HEAD = 30;                              // MH matches .bracket-slot .match height
+            const n = rounds.length;
+            const avail = Math.min(content.clientWidth - 40, 1140) - 46 - 44;   // wrap, panel and the inner panel's padding
+            const COLGAP = n > 1 ? Math.max(22, Math.min(56, Math.floor((avail - n * 250) / (n - 1)))) : 0;
+            const COLW = Math.max(190, Math.min(250, Math.floor((avail - (n - 1) * COLGAP) / n)));
+            const centers = [];
+            rounds.forEach((list, r) => { centers[r] = list.map((_, k) => r === 0 ? HEAD + k * (MH + GAP) + MH / 2 : (centers[r - 1][2 * k] + centers[r - 1][2 * k + 1]) / 2); });
+            const height = Math.max(...centers.flat()) + MH / 2, width = n * COLW + (n - 1) * COLGAP, x = r => r * (COLW + COLGAP);
+            let lines = '';
+            rounds.forEach((list, r) => {
+                if (!r) return;
+                const mid = x(r) - COLGAP / 2;
+                list.forEach((_, k) => [centers[r - 1][2 * k], centers[r - 1][2 * k + 1]].forEach(fy => { lines += `<path d="M${x(r - 1) + COLW} ${fy} H${mid} V${centers[r][k]} H${x(r)}"/>`; }));
+            });
+            return `<div class="bracket-scroll"><div class="bracket-board" style="width:${width}px;height:${height}px">
+                <svg class="bracket-lines" width="${width}" height="${height}" aria-hidden="true">${lines}</svg>
+                ${rounds.map((list, r) => `<h4 class="bracket-round" style="left:${x(r)}px;width:${COLW}px">${names[r]}</h4>` +
+                    list.map((g, k) => `<div class="bracket-slot" style="left:${x(r)}px;top:${centers[r][k] - MH / 2}px;width:${COLW}px">${matchBox(g)}</div>`).join('')).join('')}
+            </div></div>`;
+        }
+        const of_ = label => games.filter(g => g.label === label);           // in the order they were played
+        const qf = of_('Quarterfinal'), g1 = of_('Gulag round 1');
+        const champ = [order.champ.map(i => qf[i]), of_('Semifinal'), of_('Final')];
+        const gulag = [order.gulag.map(i => g1[i]), of_('Gulag'), of_('Chumpionship')];
+        document.getElementById(hostId).innerHTML =
+            `<h5 class="hm-bk-t">Championship</h5>${board(champ, ['Quarterfinals · Wk 15', 'Semifinals · Wk 16', 'Final · Wk 17'])}
+             <h5 class="hm-bk-t">Gulag <span class="muted">(loser advances)</span></h5>${board(gulag, ['Round 1 · Wk 15', 'Round 2 · Wk 16', 'Chumpionship · Wk 17'])}`;
+    }
+
+    // ================================================================ A SEASON WITH ONE MORE TEAM (python/moment_phantom.py)
+    function renderPhantom(d) {
+        const PH = d.phantom;
+        if (PH) {
+            const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+            const wk = Object.keys(PH.weekly).map(Number).sort((x, y) => x - y);
+            const oppOf = Object.fromEntries(PH.games.map(g => [g.week, g]));
+            const playoffOf = Object.fromEntries(PH.bracket.filter(g => g.a === PH.owner || g.b === PH.owner)
+                .map(g => [g.week, { opp: g.a === PH.owner ? g.b : g.a, score: g.a === PH.owner ? g.sa : g.sb, opp_score: g.a === PH.owner ? g.sb : g.sa, label: g.label }]));
+            const champ = PH.table.find(t => t.place === 1), realChamp = PH.table.find(t => t.real_place === 1);
+            const pfRank = 1 + PH.table.filter(t => t.pf > PH.pf).length;
+            // who paid for it: every manager who started one of the phantom's NFL players
+            const paid = {};
+            PH.swaps.forEach(s => {
+                const p = paid[s.owner] || (paid[s.owner] = { owner: s.owner, weeks: new Set(), lost: {}, delta: 0, wire: 0, old: 0 });
+                p.weeks.add(s.week); p.lost[s.out] = (p.lost[s.out] || 0) + 1; p.delta += s.delta;
+                if (s.from === 'his old roster') p.old++; else p.wire++;
+            });
+            const row = Object.fromEntries(PH.table.map(t => [t.owner, t]));
+            const paidRows = Object.values(paid).sort((x, y) => x.delta - y.delta);
+            const host = document.getElementById('hm-phantom');
+            host.innerHTML = `<div class="hm-regret-head"><div class="eyebrow">The replay</div><h2 class="section-title">${d.season}, With ${esc(PH.owner)}</h2>
+                <p class="section-copy">${esc(PH.owner)} starts the best projected ${esc(PH.team)} lineup in this league's format every week. Each week's bye team plays him instead of sitting out.
+                Any ${esc(PH.team)} player in another lineup is replaced by the best projected player available at that slot: the waiver wire, plus the non-${esc(PH.team)} players left on ${esc(PH.owner)}'s abandoned roster. Everything else is what really happened.
+                Then the standings and both brackets are replayed as a 16-team league: top 8 to the Championship, the rest to the Gulag (loser advances), seeded 1 v 8, 4 v 5, 3 v 6, 2 v 7.</p></div>
+                <div class="panel hm-retro-panel">
+                    <div class="db-kpis hm-retro-kpis">
+                        <div class="db-kpi"><span>${esc(PH.owner)}'s record</span><b>${PH.record[0]}-${PH.record[1]}</b><small>${ord(PH.seed)} seed</small></div>
+                        <div class="db-kpi"><span>Points for</span><b>${f2(PH.pf)}</b><small>${ord(pfRank)} of ${PH.table.length}</small></div>
+                        <div class="db-kpi"><span>Finish</span><b>${ord(PH.place)}</b><small>of ${PH.table.length}</small></div>
+                        <div class="db-kpi"><span>Champion</span><b>${esc(champ.owner)}</b><small>really ${esc(realChamp ? realChamp.owner : '-')}</small></div>
+                    </div>
+                    <div><h4 class="gc-sub">${esc(PH.owner)}, week by week</h4><div id="hm-ph-chart" class="hm-retro-chart"></div></div>
+                    <h4 class="gc-sub">Who paid for it</h4>
+                    <div class="table-scroll"><table class="data-table hm-retro-table">${SITE.cols('16%', '30%', '9%', '13%', '16%', '16%')}<thead><tr>
+                        <th>Manager</th><th>${esc(PH.team)} starters replaced</th><th class="num">Weeks</th><th class="num" data-tip="Points the replacements scored over (+) or under (-) the ${esc(PH.team)} players they replaced, all season.">Points</th>
+                        <th class="num">Record</th><th class="num">Finish</th></tr></thead><tbody>
+                        ${paidRows.map(p => { const t = row[p.owner]; return `<tr><td><span class="team-cell"><img src="${GT.logo(p.owner)}" alt=""><span>${esc(p.owner)}</span></span></td>
+                            <td data-tip="${esc(Object.entries(p.lost).map(([n, c]) => `${n} (${c})`).join(', '))}">${esc(Object.entries(p.lost).sort((x, y) => y[1] - x[1]).map(([n]) => n).join(', '))}</td>
+                            <td class="num">${p.weeks.size}</td><td class="num ${p.delta >= 0 ? 'hm-up' : 'hm-down'}">${p.delta >= 0 ? '+' : ''}${f2(p.delta)}</td>
+                            <td class="num">${t.real_wins}-${t.real_losses} → <b>${t.wins}-${t.losses}</b></td><td class="num">${ord(t.real_place)} → <b>${ord(t.place)}</b></td></tr>`; }).join('')}
+                    </tbody></table></div>
+                    <h4 class="gc-sub">The playoffs</h4>
+                    <div id="hm-ph-bracket"></div>
+                    <h4 class="gc-sub">Final standings</h4>
+                    <div class="table-scroll"><table class="data-table hm-retro-table">${SITE.cols('9%', '25%', '13%', '15%', '13%', '13%', '12%')}<thead><tr>
+                        <th>Place</th><th>Team</th><th>Record</th><th class="num">PF</th><th class="num">Seed</th><th class="num">Real place</th><th class="num">Change</th></tr></thead><tbody>
+                        ${PH.table.map(t => { const dlt = t.real_place ? t.real_place - t.place : null;
+                            return `<tr class="${t.owner === PH.owner ? 'me' : ''}"><td>${ord(t.place)}</td><td><span class="team-cell"><img src="${GT.logo(t.owner)}" alt=""><span>${esc(t.owner)}</span></span></td>
+                                <td>${t.wins}-${t.losses}</td><td class="num">${f2(t.pf)}</td><td class="num">${t.seed}</td><td class="num">${t.real_place ? ord(t.real_place) : '<span class="muted">quit</span>'}</td>
+                                <td class="num ${dlt > 0 ? 'hm-up' : dlt < 0 ? 'hm-down' : ''}">${dlt == null ? '<span class="muted">new</span>' : dlt ? `${dlt > 0 ? '▲' : '▼'} ${Math.abs(dlt)}` : '-'}</td></tr>`; }).join('')}
+                    </tbody></table></div>
+                    <p class="muted hm-foot">The real ${d.season} bracket paired teams in a way the standings don't explain, so both brackets here use a standard 1 v 8 seeding. Replacements are picked each week by ESPN's projection, biggest hole first, one team per player.</p>
+                </div>`;
+            drawBrackets('hm-ph-bracket', PH.bracket, { owner: PH.owner, order: PH.bracket_order });
+            const drawPh = () => {
+                const el = document.getElementById('hm-ph-chart'); if (!el) return;
+                const C = { accent: SITE.color('accent'), red: SITE.color('danger'), ink: SITE.color('ink'), muted: SITE.color('muted'), line: SITE.color('line-strong'), grid: SITE.color('track') };
+                const ch = echarts.getInstanceByDom(el) || echarts.init(el);
+                const opp = w => oppOf[w] || playoffOf[w];
+                ch.setOption({
+                    textStyle: { fontFamily: 'Inter, sans-serif' },
+                    tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 },
+                               formatter: ps => { const w = wk[ps[0].dataIndex], o = opp(w);
+                                   return `<b>Week ${w}</b>${o && o.label ? ` · ${esc(o.label)}` : ''}<br>${esc(PH.owner)} ${f2(PH.weekly[w])}${o ? ` vs ${esc(o.opp)} ${f2(o.opp_score)}` : ''}${PH.weekly[w] === 0 ? `<br>${esc(PH.team)} bye week` : ''}`; } },
+                    legend: { top: 0, left: 'center', textStyle: { color: C.muted, fontSize: 10 }, data: [PH.owner, 'Opponent'] },
+                    grid: { left: 36, right: 10, top: 30, bottom: 24 },
+                    xAxis: { type: 'category', data: wk.map(w => `W${w}`), axisLabel: { color: C.muted, fontSize: 10 }, axisLine: { lineStyle: { color: C.line } } },
+                    yAxis: { type: 'value', min: 0, axisLabel: { color: C.muted, fontSize: 10 }, splitLine: { lineStyle: { color: C.grid } } },
+                    series: [
+                        { name: PH.owner, type: 'bar', barMaxWidth: 20, itemStyle: { color: C.accent },
+                          data: wk.map(w => { const o = opp(w); return { value: PH.weekly[w], itemStyle: { color: !o || PH.weekly[w] >= o.opp_score ? C.accent : C.line } }; }) },
+                        { name: 'Opponent', type: 'scatter', symbol: 'rect', symbolSize: [16, 3], itemStyle: { color: C.red }, data: wk.map(w => (opp(w) || {}).opp_score ?? null) }
+                    ]
+                }, true);
+            };
+            drawPh();
+            window.addEventListener('themechange', drawPh);
+            window.addEventListener('resize', () => { const el = document.getElementById('hm-ph-chart'); const c = el && echarts.getInstanceByDom(el); c && c.resize(); });
+        }
+    }
+
     // ================================================================ LIST
     function listPage() {
         SITE.hero({ title: 'Historic League Moments', size: 'short', dots: false, image: 'background-12.png',
                     meta: [`${moments.length} matchups that turned on a single play`, 'Replayed play by play from NFL play-by-play data'] });
         content.innerHTML = `<div class="wrap"><div class="hm-list">${moments.map(m => {
-            const d = m.d, [w, l] = winnerOf(d);
+            const d = m.d, [w, l] = winnerOf(d), P = d.phantom;
+            const champ = P ? P.table.find(t => t.place === 1).owner : null;
+            // a season moment (no matchup): the phantom's record on the left, the new champion on the right
+            const scoreLine = P ? `<span class="w"><img src="${GT.logo(P.owner)}" alt=""><b>${esc(P.owner)}</b><b class="n">${P.record[0]}-${P.record[1]}</b></span>
+                    <span class="l"><span class="n">Champion</span><span>${esc(champ)}</span><img src="${GT.logo(champ)}" alt=""></span>`
+                : `<span class="w"><img src="${GT.logo(w)}" alt=""><b>${esc(w)}</b><b class="n">${f2(d.final[w])}</b></span>
+                    <span class="l"><span class="n">${f2(d.final[l])}</span><span>${esc(l)}</span><img src="${GT.logo(l)}" alt=""></span>`;
             return `<a class="hm-card" href="${url(`pages/past-seasons/moments.html?id=${encodeURIComponent(m.id)}`)}">
-                <div class="hm-card-top"><span class="pill pill-dark">${d.season} · ${esc(label(d))}</span></div>
-                <div class="hm-card-score"><span class="w"><img src="${GT.logo(w)}" alt=""><b>${esc(w)}</b><b class="n">${f2(d.final[w])}</b></span>
-                    <span class="l"><span class="n">${f2(d.final[l])}</span><span>${esc(l)}</span><img src="${GT.logo(l)}" alt=""></span></div>
+                <div class="hm-card-top"><span class="pill pill-dark">${d.season} · ${P ? 'Season' : esc(label(d))}</span></div>
+                <div class="hm-card-score">${scoreLine}</div>
                 <h2 class="hm-card-title">${esc(m.title || m.id)}</h2>
                 <p class="hm-card-dek">${esc(m.dek || '')}</p>
                 <span class="hm-card-go">Read the story →</span></a>`;
         }).join('')}</div></div>`;
     }
 
+    // ================================================================ ARTICLE (a season moment: no matchup to replay)
+    function articlePage(m) {
+        const d = m.d, s = d.story || {}, P = d.phantom;
+        SITE.hero({ title: s.title || m.id, size: 'short', dots: false, image: 'background-10.png',
+                    meta: [`${d.season} season`, P ? `${esc(P.owner)} ${P.record[0]}-${P.record[1]} · ${P.place + (['th', 'st', 'nd', 'rd'][(P.place % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][P.place % 100] || 'th')} of ${P.table.length} · champion ${esc(P.table[0].owner)}` : ''] });
+        content.innerHTML = `<div class="wrap">
+            ${s.dek ? `<p class="hm-dek">${esc(s.dek)}</p>` : ''}
+            <article class="hm-article">${(s.sections || []).map(sec => `<h3 class="hm-h">${esc(sec.h)}</h3>${sec.p.map(p => `<p>${md(p)}</p>`).join('')}`).join('')}</article>
+            ${P ? '<section class="hm-retro" id="hm-phantom"></section>' : ''}
+            <p class="hm-foot"></p></div>`;
+        renderPhantom(d);
+    }
+
     // ================================================================ DETAIL
     function detailPage(m) {
+        if (!m.d.timeline.length) return articlePage(m);
         const d = m.d, s = d.story || {}, [A, B] = d.managers, [W, L] = winnerOf(d);
         const tl = d.timeline, last = tl.length - 1;
         const margin = Math.abs(d.final[A] - d.final[B]);
@@ -406,47 +549,10 @@
                         Checked: replaying the real season through the same code reproduces all ${R.check.teams} real final places${R.check.matched === R.check.teams ? '' : ` (${R.check.matched} matched)`}.</p>
                 </div>`;
             let wChart, dChart, bView = 'alt';
-            // the playoff brackets, drawn like the Playoff Bracket page (competitions.js bracketBoard): each later game sits
-            // between the two games that feed it, with connector lines. Championship: quarterfinals, semifinals, final.
-            // Gulag (loser advances): round 1, round 2, Chumpionship. A footer notes pairings that never happened for real.
+            // the playoff brackets (drawBrackets below); "new matchup" marks a pairing that never happened for real
             const realPairs = new Set(R.real_bracket.map(g => `${g.week}:${[g.a, g.b].sort().join('|')}`));
-            const matchBox = g => {
-                const fresh = bView !== 'real' && !realPairs.has(`${g.week}:${[g.a, g.b].sort().join('|')}`);
-                const row = (n, s) => `<div class="${n === R.owner ? 'me' : ''}"><img src="${GT.logo(n)}" alt=""><span class="${g.win === n ? 'w' : ''}">${esc(n)}</span><span class="s ${g.win === n ? 'w' : ''}">${f2(s)}</span></div>`;
-                return `<div class="match">${row(g.a, g.sa)}${row(g.b, g.sb)}<span class="match-open ${fresh ? 'hm-new' : 'hm-same'}">Week ${g.week}${fresh ? ' · new matchup' : ''}</span></div>`;
-            };
-            function bracketBoard(rounds, names) {
-                const MH = 106, GAP = 18, HEAD = 30;                          // MH matches .bracket-slot .match height
-                const n = rounds.length;
-                const avail = Math.min(content.clientWidth - 40, 1140) - 46 - 44;   // wrap, panel and the retro panel's own padding
-                const COLGAP = n > 1 ? Math.max(22, Math.min(56, Math.floor((avail - n * 250) / (n - 1)))) : 0;
-                const COLW = Math.max(190, Math.min(250, Math.floor((avail - (n - 1) * COLGAP) / n)));
-                const centers = [];
-                rounds.forEach((list, r) => { centers[r] = list.map((_, k) => r === 0 ? HEAD + k * (MH + GAP) + MH / 2 : (centers[r - 1][2 * k] + centers[r - 1][2 * k + 1]) / 2); });
-                const height = Math.max(...centers.flat()) + MH / 2, width = n * COLW + (n - 1) * COLGAP, x = r => r * (COLW + COLGAP);
-                let lines = '';
-                rounds.forEach((list, r) => {
-                    if (!r) return;
-                    const mid = x(r) - COLGAP / 2;
-                    list.forEach((_, k) => [centers[r - 1][2 * k], centers[r - 1][2 * k + 1]].forEach(fy => { lines += `<path d="M${x(r - 1) + COLW} ${fy} H${mid} V${centers[r][k]} H${x(r)}"/>`; }));
-                });
-                return `<div class="bracket-scroll"><div class="bracket-board" style="width:${width}px;height:${height}px">
-                    <svg class="bracket-lines" width="${width}" height="${height}" aria-hidden="true">${lines}</svg>
-                    ${rounds.map((list, r) => `<h4 class="bracket-round" style="left:${x(r)}px;width:${COLW}px">${names[r]}</h4>` +
-                        list.map((g, k) => `<div class="bracket-slot" style="left:${x(r)}px;top:${centers[r][k] - MH / 2}px;width:${COLW}px">${matchBox(g)}</div>`).join('')).join('')}
-                </div></div>`;
-            }
-            const drawBracket = b => {
-                const games = bView === 'real' ? R.real_bracket : b.bracket;
-                const of_ = label => games.filter(g => g.label === label);               // in the order they were played (python/moment_retro.py)
-                const qf = of_('Quarterfinal'), g1 = of_('Gulag round 1');
-                // first-round order puts each later game's two feeders side by side
-                const champ = [[qf[0], qf[2], qf[1], qf[3]], of_('Semifinal'), of_('Final')];
-                const gulag = [[g1[0], g1[2], g1[3], g1[1]], of_('Gulag'), of_('Chumpionship')];
-                document.getElementById('hm-retro-bracket').innerHTML =
-                    `<h5 class="hm-bk-t">Championship</h5>${bracketBoard(champ, ['Quarterfinals · Wk 15', 'Semifinals · Wk 16', 'Final · Wk 17'])}
-                     <h5 class="hm-bk-t">Gulag <span class="muted">(loser advances)</span></h5>${bracketBoard(gulag, ['Round 1 · Wk 15', 'Round 2 · Wk 16', 'Chumpionship · Wk 17'])}`;
-            };
+            const drawBracket = b => drawBrackets('hm-retro-bracket', bView === 'real' ? R.real_bracket : b.bracket,
+                { owner: R.owner, fresh: g => bView !== 'real' && !realPairs.has(`${g.week}:${[g.a, g.b].sort().join('|')}`) });
             document.getElementById('hm-bview').addEventListener('click', e => {
                 const btn = e.target.closest('button'); if (!btn) return;
                 bView = btn.dataset.v;
