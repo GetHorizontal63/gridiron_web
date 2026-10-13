@@ -296,7 +296,7 @@
                       markLine: { silent: true, symbol: 'none', lineStyle: { color: C.line, type: 'dotted' }, label: { show: false }, data: [{ yAxis: 0.5 }] } },
                     { id: 'path', type: 'line', data: [], symbol: 'none', lineStyle: { color: C.accent, width: 3 }, areaStyle: { color: C.accent, opacity: 0.08 } },
                     { id: 'swings', type: 'scatter', data: [], symbolSize: 8, z: 3 },
-                    { id: 'alt', type: 'line', data: [], symbol: 'none', lineStyle: { color: SITE.color('gold'), width: 2, type: 'dashed' }, z: 2 },
+                    { id: 'alt', type: 'line', data: [], symbol: 'none', lineStyle: { color: SITE.color('alt'), width: 2.5, type: 'dashed' }, z: 2 },
                     { id: 'now', type: 'effectScatter', data: [], symbolSize: 14, rippleEffect: { scale: 2.6, brushType: 'stroke' }, z: 4,
                       label: { show: true, position: 'top', fontWeight: 800, fontSize: 12, color: C.ink, formatter: p => pct(p.value[1]) } }
                 ]
@@ -352,7 +352,7 @@
             drawLive(i, view);
             if (d.shadow) {
                 const ea = (view === 'pre' && i > 0 ? tl[i - 1] : e).alt, sh = d.shadow;
-                if (ea) document.getElementById('hm-alt').innerHTML = `If he had started <b>${esc(sh.player)}</b> over ${esc(sh.for)}: ${esc(sh.owner)} <b>${f2(sh.owner === A ? ea.a : ea.b)}</b> · <b>${pct(of(sh.owner, ea.wp))}</b> to win`;
+                if (ea) document.getElementById('hm-alt').innerHTML = `${sh.label ? esc(sh.label) : `If he had started <b>${esc(sh.player)}</b> over ${esc(sh.for)}`}: ${esc(sh.owner)} <b>${f2(sh.owner === A ? ea.a : ea.b)}</b> · <b>${pct(of(sh.owner, ea.wp))}</b> to win`;
             }
             const play = document.getElementById('hm-play');
             if (i === 0) play.innerHTML = `<span class="hm-play-k">Before kickoff</span><p>${esc(A)} ${f2(tl[0].a)} · ${esc(B)} ${f2(tl[0].b)}, with ${d.starters.filter(x => x.live).length} players still to play.</p>`;

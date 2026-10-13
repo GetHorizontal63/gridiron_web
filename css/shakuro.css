@@ -14,6 +14,8 @@
     --dark:#0f0f0f;
     --dark-2:#1b1b1b;
     --accent:#3b7a57;          /* league logo green */
+    --alt:#2563eb;             /* the other lineup in a what-if (Historic League Moments) */
+    --alt-rgb:37,99,235;
     --accent-dark:#2d6045;
     --danger:#d0261d;          /* dropped / traded draft picks */
     --gold:#d4a017;            /* reigning champion */
@@ -44,6 +46,8 @@
     --dark:#0c0d0f;            /* deep coal: sub header, footer */
     --dark-2:#111316;
     --accent:#f2b934;          /* league logo yellow */
+    --alt:#60a5fa;
+    --alt-rgb:96,165,250;
     --accent-dark:#d99f19;
     --danger:#ff6f61;
     --gold:#f2b934;
@@ -1086,11 +1090,11 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 .hm-prob-lbl em{font-style:normal;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
 .hm-chart{width:100%;flex:1 1 auto;min-height:120px}
 .hm-alt{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2);height:18px;white-space:nowrap;overflow:hidden}
-.hm-alt i{display:inline-block;width:18px;border-top:2px dashed var(--gold)}
-.hm-live-r.sh > span:first-child i{background:var(--gold)}
-.hm-live-r.sh{background:repeating-linear-gradient(135deg,transparent 0 6px,rgba(212,160,23,.07) 6px 12px)}
+.hm-alt i{display:inline-block;width:22px;border-top:3px dashed var(--alt)}
+.hm-live-r.sh > span:first-child i{background:var(--alt)}
+.hm-live-r.sh{background:repeating-linear-gradient(135deg,transparent 0 6px,rgba(var(--alt-rgb),.08) 6px 12px)}
 .hm-live-r.blank{border-top:1px solid var(--hair)}
-.hm-chip.sh{border-color:var(--gold);background:rgba(212,160,23,.12)}
+.hm-chip.sh{border-color:var(--alt);background:rgba(var(--alt-rgb),.12)}
 .hm-live{flex:0 0 auto;border-top:1px solid var(--line);padding-top:8px}
 .hm-live-h,.hm-live-r{display:grid;grid-template-columns:minmax(0,1fr) 64px 64px 56px;gap:10px;align-items:center}
 .hm-live-h{font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);height:18px}
