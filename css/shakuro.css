@@ -1038,20 +1038,16 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 .ro-legend::-webkit-scrollbar,.an-legend::-webkit-scrollbar,.mv-key::-webkit-scrollbar{display:none}
 
 /* Past Seasons: Historic League Moments */
-.hm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-top:34px}
-.hm-card{display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);padding:20px 22px;color:var(--ink);text-decoration:none;transition:border-color .15s}
-.hm-card:hover{border-color:var(--accent)}
-/* every section a fixed height, so all cards match and their parts line up across rows */
-.hm-card-top{height:22px;display:flex;align-items:center;overflow:hidden;white-space:nowrap}
-.hm-card-score{height:28px;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:10px;font-size:13px;font-variant-numeric:tabular-nums;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
-.hm-card-score > span{display:flex;align-items:center;gap:7px;min-width:0;white-space:nowrap}
-.hm-card-score .l{justify-content:flex-end;color:var(--muted)}
-.hm-card-score .n{margin-left:auto}
-.hm-card-score .l .n{margin-left:0;margin-right:auto}
-.hm-card-score img{width:20px;height:20px;object-fit:contain;flex-shrink:0}
-.hm-card-title{font-family:var(--display);font-weight:800;font-size:34px;line-height:.95;text-transform:uppercase;height:66px;overflow:hidden;margin:0}
-.hm-card-dek{font-size:13.5px;line-height:1.55;color:var(--ink-2);height:105px;margin:0;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
-.hm-card-go{height:16px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.hm-list{display:flex;flex-direction:column;gap:14px;margin-top:34px}
+.hero.hm-plain{background:#111}
+.hero.hm-plain::after{display:none}
+.hm-banner .wrap{max-width:none;padding-left:44px;padding-right:44px}
+/* a banner is the moment's detail hero; the photo comes into color on hover */
+.hm-banner{display:block;text-decoration:none}
+.hm-banner::before{transition:filter .25s}
+.hm-banner:hover::before{filter:none}
+.hm-banner .hero-title{font-family:var(--display);font-weight:800;font-size:clamp(34px,5vw,64px);line-height:.92;text-transform:uppercase;letter-spacing:.005em;white-space:nowrap;width:100%;height:59px;margin:0;display:flex;align-items:flex-end;overflow:hidden}
+.hm-banner .hero-title span{display:inline-block;white-space:nowrap}
 .hm-dek{max-width:780px;margin:34px auto 0;font-size:20px;line-height:1.55;font-weight:500;color:var(--ink);text-align:center}
 
 /* scroll story: steps on the left, a sticky stage on the right */
@@ -1221,7 +1217,10 @@ a.wm-chip:hover{background:var(--accent);color:var(--on-accent)}
 .hm-foot:last-child{margin-bottom:40px}
 
 @media (max-width:900px){
-    .hm-list{grid-template-columns:1fr}
+    .hm-banner{height:200px}
+    .hm-banner .wrap{padding-left:20px;padding-right:20px}
+    .hm-banner .hero-meta div{font-size:10px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hm-banner .hero-title{font-size:34px;height:32px}
     .hm-dek{font-size:16px}
     .hm-scrolly{display:flex;flex-direction:column-reverse;gap:0}
     .hm-stage-col{position:sticky;top:60px;z-index:5}

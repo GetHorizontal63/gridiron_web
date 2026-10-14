@@ -158,11 +158,38 @@
         }));
     }
 
-    function hero({ title, logo = '', meta = [], image = 'background-5.png', size = '', dots = true, portrait = '', tools = '' }) {
+    // Keep a point of a cover-cropped background in view at any box size: focus = 'x% y%' of the image (a face, say).
+    // Reads the image's real size, then places it so that point sits at the middle across and `at` of the way down the box
+    // (0.4 by default: a little headroom keeps the upper body in frame; the hero uses 0.25 so the face clears its title),
+    // clamped so the image always covers the box. Re-runs as the box resizes. Further layers (a fallback) stay centered.
+    function focusImage(el, src, focus, at = 0.4) {
+        const m = String(focus || '').match(/(-?[\d.]+)%\s+(-?[\d.]+)%/);
+        if (!el || !m) return;
+        const fx = Number(m[1]) / 100, fy = Number(m[2]) / 100, layers = (el.style.backgroundImage.match(/url\(/g) || []).length;
+        const img = new Image();
+        img.onload = () => {
+            const place = () => {
+                const cw = el.clientWidth, ch = el.clientHeight;
+                if (!cw || !ch) return;
+                const k = Math.max(cw / img.naturalWidth, ch / img.naturalHeight), sw = img.naturalWidth * k, sh = img.naturalHeight * k;
+                const ox = Math.min(0, Math.max(cw - sw, cw / 2 - fx * sw)), oy = Math.min(0, Math.max(ch - sh, ch * at - fy * sh));
+                el.style.backgroundPosition = [`${ox.toFixed(1)}px ${oy.toFixed(1)}px`, ...Array(Math.max(0, layers - 1)).fill('center')].join(', ');
+            };
+            place();
+            if (window.ResizeObserver) new ResizeObserver(place).observe(el); else window.addEventListener('resize', place);
+        };
+        img.src = src;
+    }
+
+    // focus: the spot to keep in view as the hero crops ('42% 26%' = a face); fallback: an image layer underneath
+    // that shows if the main image is missing
+    function hero({ title, logo = '', meta = [], image = 'background-5.png', size = '', dots = true, portrait = '', tools = '', focus = '', fallback = '' }) {
         const holder = document.getElementById('hero');
         if (!holder) return;
         holder.className = `hero ${size}${portrait ? ' has-portrait' : ''}`;
-        holder.style.backgroundImage = `url('${url('assets/images/' + image)}')`;
+        holder.style.backgroundImage = `url('${url('assets/images/' + image)}')${fallback ? `, url('${url('assets/images/' + fallback)}')` : ''}`;
+        holder.style.backgroundPosition = focus ? '50% 30%' : '';                // until the image's size is known
+        if (focus) focusImage(holder, url('assets/images/' + image), focus, 0.25);
         holder.innerHTML = `<div class="wrap">${tools ? `<div class="hero-tools">${tools}</div>` : ''}
             ${logo ? `<div class="hero-logo"><img src="${logo}" alt=""></div>` : ''}
             <h1 class="hero-title"><span>${esc(title)}</span></h1>
@@ -228,5 +255,5 @@
     renderHeader();
     renderFooter();
     const color = name => getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();   // theme colour, e.g. color('accent')
-    window.SITE = { ROOT, url, esc, param, subHeader, sectionTabs, hero, setSeason, cols, color, SITE_MAP };
+    window.SITE = { ROOT, url, esc, param, subHeader, sectionTabs, hero, focusImage, setSeason, cols, color, SITE_MAP };
 })();

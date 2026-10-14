@@ -153,31 +153,51 @@
     }
 
     // ================================================================ LIST
+    // the hero's meta lines for a moment: the same text on its detail page and its banner in the list
+    function ordinal(n) { return n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th'); }
+    function metaOf(d) {
+        const P = d.phantom;
+        if (P) return [`${d.season} season`, `${esc(P.owner)} ${P.record[0]}-${P.record[1]} · ${ordinal(P.place)} of ${P.table.length} · champion ${esc(P.table[0].owner)}`];
+        const [W, L] = winnerOf(d);
+        return [`${d.season} · ${esc(label(d))}`, `${esc(W)} ${f2(d.final[W])} - ${f2(d.final[L])} ${esc(L)} · decided by ${f2(Math.abs(d.final[W] - d.final[L]))}`];
+    }
+
+    // Keep a banner title on one line: shrink its text to fit the width (the box height stays fixed)
+    function fitBannerTitles() {
+        document.querySelectorAll('.hm-banner .hero-title').forEach(h1 => {
+            const span = h1.firstElementChild;
+            span.style.fontSize = '';
+            let size = parseFloat(getComputedStyle(h1).fontSize);
+            while (span.scrollWidth > h1.clientWidth && size > 18) span.style.fontSize = `${--size}px`;
+        });
+    }
+
+    // every moment as a banner: its detail page's hero (photo on its focal point, title, meta), linking to the story
     function listPage() {
-        SITE.hero({ title: 'Historic League Moments', size: 'short', dots: false, image: 'background-12.png',
-                    meta: [`${moments.length} matchups that turned on a single play`, 'Replayed play by play from NFL play-by-play data'] });
+        SITE.hero({ title: 'Historic League Moments', size: 'short', dots: false,
+                    meta: [`${moments.length} matchups that came down to one moment`, 'Rebuilt snap by snap from NFL game data'] });
+        const top = document.getElementById('hero');
+        top.style.backgroundImage = 'none';                      // the list's own header is a plain black fill
+        top.classList.add('hm-plain');
         content.innerHTML = `<div class="wrap"><div class="hm-list">${moments.map(m => {
-            const d = m.d, [w, l] = winnerOf(d), P = d.phantom;
-            const champ = P ? P.table.find(t => t.place === 1).owner : null;
-            // a season moment (no matchup): the phantom's record on the left, the new champion on the right
-            const scoreLine = P ? `<span class="w"><img src="${GT.logo(P.owner)}" alt=""><b>${esc(P.owner)}</b><b class="n">${P.record[0]}-${P.record[1]}</b></span>
-                    <span class="l"><span class="n">Champion</span><span>${esc(champ)}</span><img src="${GT.logo(champ)}" alt=""></span>`
-                : `<span class="w"><img src="${GT.logo(w)}" alt=""><b>${esc(w)}</b><b class="n">${f2(d.final[w])}</b></span>
-                    <span class="l"><span class="n">${f2(d.final[l])}</span><span>${esc(l)}</span><img src="${GT.logo(l)}" alt=""></span>`;
-            return `<a class="hm-card" href="${url(`pages/past-seasons/moments.html?id=${encodeURIComponent(m.id)}`)}">
-                <div class="hm-card-top"><span class="pill pill-dark">${d.season} · ${P ? 'Season' : esc(label(d))}</span></div>
-                <div class="hm-card-score">${scoreLine}</div>
-                <h2 class="hm-card-title">${esc(m.title || m.id)}</h2>
-                <p class="hm-card-dek">${esc(m.dek || '')}</p>
-                <span class="hm-card-go">Read the story →</span></a>`;
+            const d = m.d, s = d.story || {};
+            const pic = `url('${url(`assets/images/${s.image || 'background-10.png'}`)}'), url('${url('assets/images/background-10.png')}')`;
+            return `<a class="hero short hm-banner" href="${url(`pages/past-seasons/moments.html?id=${encodeURIComponent(m.id)}`)}"
+                    data-src="${s.image ? url(`assets/images/${s.image}`) : ''}" data-focus="${s.focus || ''}" style="background-image:${pic}">
+                <div class="wrap"><h2 class="hero-title"><span>${esc(s.title || m.title || m.id)}</span></h2>
+                <div class="hero-meta">${metaOf(d).map(x => `<div>${x}</div>`).join('')}</div></div></a>`;
         }).join('')}</div></div>`;
+        document.querySelectorAll('.hm-banner').forEach(el => { if (el.dataset.src) SITE.focusImage(el, el.dataset.src, el.dataset.focus, 0.25); });
+        fitBannerTitles();
+        window.addEventListener('resize', fitBannerTitles);
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitBannerTitles);
     }
 
     // ================================================================ ARTICLE (a season moment: no matchup to replay)
     function articlePage(m) {
         const d = m.d, s = d.story || {}, P = d.phantom;
-        SITE.hero({ title: s.title || m.id, size: 'short', dots: false, image: 'background-10.png',
-                    meta: [`${d.season} season`, P ? `${esc(P.owner)} ${P.record[0]}-${P.record[1]} · ${P.place + (['th', 'st', 'nd', 'rd'][(P.place % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][P.place % 100] || 'th')} of ${P.table.length} · champion ${esc(P.table[0].owner)}` : ''] });
+        SITE.hero({ title: s.title || m.id, size: 'short', dots: false, image: s.image || 'background-10.png', focus: s.focus, fallback: s.image ? 'background-10.png' : '',
+                    meta: metaOf(d) });
         content.innerHTML = `<div class="wrap">
             ${s.dek ? `<p class="hm-dek">${esc(s.dek)}</p>` : ''}
             <article class="hm-article">${(s.sections || []).map(sec => `<h3 class="hm-h">${esc(sec.h)}</h3>${sec.p.map(p => `<p>${md(p)}</p>`).join('')}`).join('')}</article>
@@ -192,8 +212,8 @@
         const d = m.d, s = d.story || {}, [A, B] = d.managers, [W, L] = winnerOf(d);
         const tl = d.timeline, last = tl.length - 1;
         const margin = Math.abs(d.final[A] - d.final[B]);
-        SITE.hero({ title: s.title || m.id, size: 'short', dots: false, image: 'background-10.png',
-                    meta: [`${d.season} · ${esc(label(d))}`, `${esc(W)} ${f2(d.final[W])} - ${f2(d.final[L])} ${esc(L)} · decided by ${f2(margin)}`] });
+        SITE.hero({ title: s.title || m.id, size: 'short', dots: false, image: s.image || 'background-10.png', focus: s.focus, fallback: s.image ? 'background-10.png' : '',
+                    meta: metaOf(d) });
 
         const gameLabel = g => { const p = String(g).split('_'); return `${p[2]} @ ${p[3]}`; };
         const multi = new Set(tl.map(e => e.g)).size > 1;
