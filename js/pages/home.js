@@ -71,6 +71,7 @@
         { label: 'Closest loss', game: pick(recent.filter(g => g.hs !== g.aws), g => -margin(g)) || recent[0], image: 'background-16.png' }
     ] : [];
     const slide = ({ label, game: g, image }, i) => {
+        const bg = SITE.randomBg();
         const homeWon = g.hs >= g.aws;
         const [wId, wName, wPts, lId, lName, lPts] = homeWon ? [g.hid, g.home, g.hs, g.aid, g.away, g.aws] : [g.aid, g.away, g.aws, g.hid, g.home, g.hs];
         const m = wPts - lPts;
@@ -83,7 +84,7 @@
             <span class="ft-bar"><span style="width:${(pts / max * 100).toFixed(1)}%"></span></span>
             <span class="ft-mark">${won ? '▸' : ''}</span><span class="ft-score">${GT.pts(pts)}</span></div>`;
         return `<div class="ft-slide${i === 0 ? ' on' : ''}" data-i="${i}">
-            <div class="ft-bg" style="background-image:url('${url('assets/images/' + image)}')"></div>
+            <div class="ft-bg" data-src="${url('assets/images/' + bg)}" data-focus="${SITE.bgFocus(bg)}" style="background-image:url('${url('assets/images/' + bg)}')"></div>
             <div class="wrap ft-inner">
             <div class="ft-photo">
                 <span class="pill pill-accent ft-tag">${esc(label)} · Week ${g.week}</span>
@@ -133,6 +134,7 @@
     </div>`;
 
     content.innerHTML = strip + feature + `<div class="wrap page-pad">${cards}</div>`;
+    document.querySelectorAll('.ft-bg').forEach(el => SITE.focusImage(el, el.dataset.src, el.dataset.focus));
 
     // ---------------------------------------------------------------- carousel: tabs + auto-advance (pauses on hover)
     const ft = document.getElementById('ft');

@@ -181,12 +181,36 @@
         img.src = src;
     }
 
+    // The hero / banner photo pool (assets/images/background-N). Each page load deals from one shuffled deck, so every
+    // header gets a random photo and no two on the same page repeat.
+    const BACKGROUNDS = [...Array.from({ length: 18 }, (_, i) => `background-${i + 1}.png`),
+                         ...Array.from({ length: 16 }, (_, i) => `background-${i + 19}.jpg`)];
+    // each photo's focal point (x% y% of the image: the main player's face / upper body), kept in frame by focusImage
+    const BG_FOCUS_N = {
+        1: '32% 28%', 2: '55% 40%', 3: '36% 30%', 4: '40% 27%', 5: '48% 16%', 6: '60% 18%',
+        7: '52% 25%', 8: '66% 12%', 9: '48% 37%', 10: '35% 28%', 11: '50% 55%', 12: '49% 28%',
+        13: '60% 14%', 14: '47% 9%', 15: '51% 13%', 16: '40% 18%', 17: '60% 25%', 18: '48% 16%',
+        19: '42% 40%', 20: '49% 45%', 21: '63% 13%', 22: '50% 17%', 23: '50% 55%', 24: '50% 26%',
+        25: '50% 22%', 26: '50% 20%', 27: '49% 12%', 28: '50% 16%', 29: '51% 31%', 30: '58% 9%',
+        31: '47% 18%', 32: '45% 8%', 33: '52% 13%', 34: '42% 26%'
+    };
+    const bgFocus = name => BG_FOCUS_N[(String(name).match(/^background-(\d+)\./) || [])[1]] || '';
+    const bgDeck = [];
+    function randomBg() {
+        if (!bgDeck.length) bgDeck.push(...BACKGROUNDS.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(x => x[1]));
+        return bgDeck.pop();
+    }
+
     // focus: the spot to keep in view as the hero crops ('42% 26%' = a face); fallback: an image layer underneath
     // that shows if the main image is missing
     function hero({ title, logo = '', meta = [], image = 'background-5.png', size = '', dots = true, portrait = '', tools = '', focus = '', fallback = '' }) {
         const holder = document.getElementById('hero');
         if (!holder) return;
         holder.className = `hero ${size}${portrait ? ' has-portrait' : ''}`;
+        if (/^background-\d+\.(png|jpg)$/.test(image)) {                            // a stock header: a random photo from the pool
+            image = randomBg();
+            focus = bgFocus(image);
+        }
         holder.style.backgroundImage = `url('${url('assets/images/' + image)}')${fallback ? `, url('${url('assets/images/' + fallback)}')` : ''}`;
         holder.style.backgroundPosition = focus ? '50% 30%' : '';                // until the image's size is known
         if (focus) focusImage(holder, url('assets/images/' + image), focus, 0.25);
@@ -255,5 +279,5 @@
     renderHeader();
     renderFooter();
     const color = name => getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();   // theme colour, e.g. color('accent')
-    window.SITE = { ROOT, url, esc, param, subHeader, sectionTabs, hero, focusImage, setSeason, cols, color, SITE_MAP };
+    window.SITE = { ROOT, url, esc, param, subHeader, sectionTabs, hero, focusImage, randomBg, bgFocus, setSeason, cols, color, SITE_MAP };
 })();
