@@ -17,6 +17,7 @@
         const o = b.byName[String(n).toLowerCase()];
         return `<a class="team-cell" href="${url(`pages/managers/overview.html?m=${o ? o.id : ''}${season ? `&season=${season}` : ''}`)}"><img src="${GT.logo(n)}" alt=""><b>${esc(n)}</b></a>`;
     };
+    const nflCell = t => t && t !== 'TEAM0' ? `<img class="sx-nfl" src="${url(`assets/nfl-logos/${String(t).toLowerCase()}.png`)}" alt="${esc(t)}" onerror="this.src='${url('assets/nfl-logos/nfl.png')}';this.onerror=null">` : '-';
     const playerCell = (pid, n) => pid > 0 ? `<a href="${url(`pages/players/stats.html?id=${pid}`)}"><b>${esc(n)}</b></a>` : `<b>${esc(n)}</b>`;
 
     // ---------------------------------------------------------------- shared data: every team game
@@ -55,7 +56,17 @@
     // ---------------------------------------------------------------- views
     // column: [key, label, width %, numeric?, render(row) -> html, csv(row) -> text]
     const C = (k, label, w, num, render, csv) => ({ k, label, w, num, render: render || (r => esc(r[k] ?? '-')), csv: csv || (r => r[k] ?? '') });
-    let lineupRows = null, draftRows = null, moveRows = null;
+    let lineupRows = null, draftRows = null, moveRows = null, nflOpp = null, nflTeams = [];
+    // season|week|team -> that week's NFL opponent (none on a bye)
+    const nflSchedule = async () => {
+        if (nflOpp) return nflOpp;
+        nflOpp = {};
+        (await GT.query('SELECT season, week, home_team AS h, away_team AS a FROM nfl_games')).forEach(g => {
+            nflOpp[`${g.season}|${g.week}|${g.h}`] = g.a; nflOpp[`${g.season}|${g.week}|${g.a}`] = g.h;
+        });
+        nflTeams = [...new Set(Object.keys(nflOpp).map(k => k.split('|')[2]))].sort();
+        return nflOpp;
+    };
     const lineups = async () => lineupRows || (lineupRows = (await GT.query(`
         SELECT fr.season, fr.week, fr.owner_id AS id, o.display_name AS mgr, frp.player_id AS pid, p.name, p.position AS pos,
                frp.slot_position AS slot, frp.actual_points AS pts, frp.projected_points AS proj, COALESCE(frp.pro_team, p.pro_team) AS nfl
@@ -161,16 +172,21 @@
             }
         },
         'player-games': {
-            label: 'Player Games', filters: ['season', 'period', 'manager', 'pos', 'q', 'lineup'], sort: ['pts', -1],
+            label: 'Player Games', filters: ['season', 'period', 'manager', 'pos', 'q', 'lineup', 'nfl', 'opp'], sort: ['pts', -1], fit: true,
             note: 'Every player in every league lineup, week by week. Use Lineup to include the bench.',
-            cols: [C('season', 'Season', 6, false), C('week', 'Week', 6, true), C('name', 'Player', 22, false, r => playerCell(r.pid, r.name)),
-                   C('pos', 'Pos', 6, false), C('slot', 'Slot', 7, false), C('mgr', 'Manager', 17, false, r => mgrCell(r.mgr, r.season)),
-                   C('pts', 'Points', 9, true, r => `<b>${f1(r.pts)}</b>`), C('proj', 'Projected', 9, true, r => f1(r.proj)),
-                   C('vsProj', '+/- proj', 9, true, r => sgn(r.vsProj)), C('nfl', 'NFL', 9, false)],
+            cols: [C('season', 'Season', 6, false), C('week', 'Week', 5, true), C('name', 'Player', 22, false, r => playerCell(r.pid, r.name)),
+                   C('pos', 'Pos', 5, false), C('slot', 'Slot', 6, false), C('mgr', 'Manager', 17, false, r => mgrCell(r.mgr, r.season)),
+                   C('pts', 'Points', 8, true, r => `<b>${f1(r.pts)}</b>`), C('proj', 'Projected', 9, true, r => f1(r.proj)),
+                   C('vsProj', '+/- proj', 8, true, r => sgn(r.vsProj)), C('nfl', 'NFL', 7, false, r => nflCell(r.nfl)),
+                   C('opp', 'Opp', 7, false, r => nflCell(r.opp))],
             async: true,
-            rows: async f => (await lineups()).filter(r => inRange(r.season, f) && inPeriod(r.period, f) && (!f.manager || r.id === f.manager)
-                    && posOk(r.pos, f) && nameOk(r.name, f) && (f.lineup === 'all' || (f.lineup === 'bench' ? !r.started : r.started)))
-                .map(r => ({ ...r, vsProj: r.proj == null ? null : r.pts - r.proj }))
+            rows: async f => {
+                const opp = await nflSchedule();
+                return (await lineups()).filter(r => inRange(r.season, f) && inPeriod(r.period, f) && (!f.manager || r.id === f.manager)
+                        && posOk(r.pos, f) && nameOk(r.name, f) && (f.lineup === 'all' || (f.lineup === 'bench' ? !r.started : r.started))
+                        && (!f.nfl || r.nfl === f.nfl) && (!f.opp || opp[`${r.season}|${r.week}|${r.nfl}`] === f.opp))
+                    .map(r => ({ ...r, opp: opp[`${r.season}|${r.week}|${r.nfl}`] || '', vsProj: r.proj == null ? null : r.pts - r.proj }));
+            }
         },
         'drafts': {
             label: 'Drafts', filters: ['season', 'manager', 'pos', 'q', 'round'], sort: ['pick', 1],
@@ -237,7 +253,7 @@
     const viewKey = VIEWS[param('view')] ? param('view') : 'manager-seasons';
     const view = VIEWS[viewKey];
     const managers = b.owners.slice().sort((x, y) => x.name.localeCompare(y.name));
-    const f = { from: allSeasons[allSeasons.length - 1], to: allSeasons[0], period: 'regular', manager: 0, pos: '', q: '', min: view.minDefault || 0, lineup: 'started', result: '', round: '', kind: '' };
+    const f = { from: allSeasons[allSeasons.length - 1], to: allSeasons[0], period: 'regular', manager: 0, pos: '', q: '', min: view.minDefault || 0, lineup: 'started', result: '', round: '', kind: '', nfl: '', opp: '' };
     let sort = { key: view.sort[0], dir: view.sort[1] };
     let page = 1;
 
@@ -246,6 +262,7 @@
     SITE.hero({ title: 'Stat Finder', size: 'short', dots: false, image: 'background-15.png',
                 meta: [`Every game, season, lineup, draft pick and roster move since ${allSeasons[allSeasons.length - 1]}`] });
 
+    const SHORT = { season: 'Yr', week: 'Wk', mgr: 'Mgr', pts: 'Pts', proj: 'Proj', vsProj: '+/-' };   // narrow-screen header labels (fitted tables)
     const opt = (v, label, cur) => `<option value="${v}"${String(v) === String(cur) ? ' selected' : ''}>${esc(label)}</option>`;
     const CONTROLS = {
         season: () => `<label class="sx-f"><span>From</span><select class="select" data-f="from">${allSeasons.slice().reverse().map(s => opt(s, s, f.from)).join('')}</select></label>
@@ -257,16 +274,22 @@
         result: () => `<label class="sx-f"><span>Result</span><select class="select" data-f="result">${opt('', 'Any', f.result)}${opt('W', 'Wins', f.result)}${opt('L', 'Losses', f.result)}${opt('T', 'Ties', f.result)}</select></label>`,
         round: () => `<label class="sx-f"><span>Round</span><select class="select" data-f="round">${opt('', 'All', f.round)}${Array.from({ length: 20 }, (_, i) => opt(i + 1, i + 1, f.round)).join('')}</select></label>`,
         kind: () => `<label class="sx-f"><span>Move</span><select class="select" data-f="kind">${opt('', 'All', f.kind)}${opt('PICKUP', 'Pickups', f.kind)}${opt('DROP', 'Drops', f.kind)}${opt('TRADE', 'Trades', f.kind)}</select></label>`,
+        nfl: () => `<label class="sx-f"><span>NFL team</span><select class="select" data-f="nfl">${opt('', 'All', f.nfl)}${nflTeams.map(t => opt(t, t, f.nfl)).join('')}</select></label>`,
+        opp: () => `<label class="sx-f"><span>NFL opponent</span><select class="select" data-f="opp">${opt('', 'All', f.opp)}${nflTeams.map(t => opt(t, t, f.opp)).join('')}</select></label>`,
         min: () => `<label class="sx-f"><span>${view.minLabel}</span><select class="select" data-f="min">${[0, 5, 10, 14, 25, 50, 75, 100].map(n => opt(n, n ? `${n}+` : 'Any', f.min)).join('')}</select></label>`,
         q: () => `<label class="sx-f sx-q"><span>Player</span><input type="search" data-f="q" placeholder="Search..." value="${esc(f.q)}" autocomplete="off"></label>`
     };
+    if (view.filters.includes('nfl')) await nflSchedule();                          // the team dropdowns need the team list
     content.innerHTML = `<div class="wrap page-pad">
         <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">Stat Finder</div><h2 class="section-title">${esc(view.label)}</h2>
             <p class="section-copy" style="max-width:none">${esc(view.note)}</p></div>
-            <button class="btn btn-black" id="sx-csv">Export CSV</button></div>
-        <div class="sx-bar">${view.filters.map(k => CONTROLS[k]()).join('')}<button class="sx-reset" id="sx-reset">Reset</button></div>
-        <div class="panel sx-panel"><div class="table-scroll"><table class="data-table sx-table">${SITE.cols(...view.cols.map(c => `${c.w}%`))}
-            <thead><tr>${view.cols.map(c => `<th class="${c.num ? 'num' : ''} sx-sort" data-k="${c.k}">${esc(c.label)}</th>`).join('')}</tr></thead>
+            <div class="sx-actions"><button class="sx-reset" id="sx-reset">Reset</button><button class="btn btn-black" id="sx-csv">Export CSV</button></div></div>
+        <div class="sx-bar">${view.filters.map(k => CONTROLS[k]()).join('')}</div>
+        <div class="panel sx-panel"><div class="table-scroll"><table class="data-table sx-table${view.fit ? ' sx-fit' : ''}">${view.fit
+                ? `<colgroup>${view.cols.map(c => `<col class="c-${c.k}" style="width:${c.w}%">`).join('')}</colgroup>`
+                : SITE.cols(...view.cols.map(c => `${c.w}%`))}
+            <thead><tr>${view.cols.map(c => `<th class="${c.num ? 'num' : ''} sx-sort c-${c.k}" data-k="${c.k}">${view.fit && SHORT[c.k]
+                ? `<span class="sx-l">${esc(c.label)}</span><span class="sx-s">${SHORT[c.k]}</span>` : esc(c.label)}</th>`).join('')}</tr></thead>
             <tbody id="sx-rows"><tr><td colspan="${view.cols.length}" class="muted">Loading...</td></tr></tbody></table></div>
             <div class="pager" id="pager"></div></div></div>`;
 
@@ -291,7 +314,7 @@
         page = Math.min(Math.max(1, page), pages);
         const start = (page - 1) * PER_PAGE;
         document.getElementById('sx-rows').innerHTML = list.slice(start, start + PER_PAGE).map(r =>
-            `<tr${view.href ? ` class="row-link" data-href="${view.href(r)}"` : ''}>${view.cols.map(c => `<td class="${c.num ? 'num' : ''}${c.k === sort.key ? ' sx-on' : ''}"${c.num ? '' : ` title="${esc(c.csv(r))}"`}>${c.render(r)}</td>`).join('')}</tr>`).join('')
+            `<tr${view.href ? ` class="row-link" data-href="${view.href(r)}"` : ''}>${view.cols.map(c => `<td class="c-${c.k}${c.num ? ' num' : ''}${c.k === sort.key ? ' sx-on' : ''}"${c.num ? '' : ` title="${esc(c.csv(r))}"`}>${c.render(r)}</td>`).join('')}</tr>`).join('')
             || `<tr><td colspan="${view.cols.length}" class="muted">Nothing matches these filters.</td></tr>`;
         document.querySelectorAll('.sx-sort').forEach(th => {
             th.classList.toggle('asc', th.dataset.k === sort.key && sort.dir === 1);

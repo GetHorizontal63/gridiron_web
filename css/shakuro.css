@@ -757,7 +757,34 @@ img[src$="nfl-logos/nyj.png"]{filter:brightness(0) saturate(100%) invert(24%) se
 .sx-f input{height:var(--ctl-h);width:190px;border:1px solid var(--line);background:var(--surface);padding:0 12px;font:inherit;font-size:12px}
 .sx-reset{height:var(--ctl-h);padding:0 14px;border:1px solid var(--line);background:none;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
 .sx-reset:hover{border-color:var(--ink)}
+.sx-actions{display:flex;gap:8px;align-items:center}
+.sx-actions .btn{height:var(--ctl-h)}
+/* the filters on one row, the player search last and taking whatever width is left */
+@media (min-width:901px){
+    .sx-bar{flex-wrap:nowrap}
+    .sx-bar .sx-f{flex:0 1 auto;min-width:0}
+    .sx-bar .sx-f .select{min-width:0;width:100%}
+    .sx-bar .sx-q{order:99;flex:1 1 120px;margin-left:auto}
+    .sx-bar .sx-q input{width:100%}
+    .sx-bar .sx-f span{white-space:nowrap}
+    .sx-bar .sx-f:has(> [data-f="pos"]),.sx-bar .sx-f:has(> [data-f="lineup"]),
+    .sx-bar .sx-f:has(> [data-f="nfl"]),.sx-bar .sx-f:has(> [data-f="opp"]){flex:0 0 112px}   /* one width for these four */
+}
+.sx-fit th.c-nfl,.sx-fit td.c-nfl,.sx-fit th.c-opp,.sx-fit td.c-opp{text-align:center}
 .sx-table{min-width:1140px}
+.sx-table.sx-fit{min-width:0}                               /* a table that fits its columns into the page instead of scrolling */
+.sx-table .sx-nfl{display:block;width:22px;height:22px;object-fit:contain;margin:0 auto}
+.sx-fit th,.sx-fit td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sx-fit .sx-s{display:none}
+@media (max-width: 640px){
+    /* Player Games on a phone: no Pos / Slot / Projected / +/- proj, the manager as a logo, short headers */
+    .sx-fit .c-pos,.sx-fit .c-slot,.sx-fit .c-proj,.sx-fit .c-vsProj{display:none}
+    .sx-fit col.c-season{width:14%!important}.sx-fit col.c-week{width:10%!important}.sx-fit col.c-name{width:31%!important}
+    .sx-fit col.c-mgr{width:11%!important}.sx-fit col.c-pts{width:14%!important}.sx-fit col.c-nfl,.sx-fit col.c-opp{width:10%!important}
+    .sx-fit th,.sx-fit td{padding-left:3px;padding-right:3px}
+    .sx-fit .team-cell b{display:none}
+}
+@media (max-width:1100px){ .sx-fit .sx-l{display:none}.sx-fit .sx-s{display:inline} }
 .sx-sort{cursor:pointer;user-select:none;position:relative}
 .sx-sort:hover{color:var(--ink)}
 .sx-sort.asc,.sx-sort.desc{color:var(--accent)}
