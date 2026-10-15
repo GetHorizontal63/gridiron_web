@@ -1,4 +1,4 @@
-/* Manager pages: Overview, Schedule & Results, Roster History, Manager Stats History */
+/* Manager pages: Overview, Schedule & Results, Roster History, Manager Stats History, Vs the NFL, Draft Tendencies, Rivalries */
 (async function () {
     const { esc, url, param } = SITE;
     const page = document.body.dataset.page;
@@ -10,7 +10,9 @@
 
     const all = await GT.games(mgr.id);
     const seasons = [...new Set(all.map(g => g.season))].sort((x, y) => y - x);
-    const CAREER = param('season') === 'career';
+    // Draft Tendencies and Rivalries are career summaries: always the whole career, no season picker
+    const CAREER_ONLY = ['draft-tendencies', 'rivalry'].includes(page);
+    const CAREER = CAREER_ONLY || param('season') === 'career';
     const season = CAREER ? 0 : Number(param('season')) || seasons[0];
     const label = CAREER ? 'Career' : season;            // shown wherever the season number was
     const sq = CAREER ? 'career' : season;               // value for ?season= links
@@ -40,13 +42,18 @@
         const u = new URL(location.href); u.searchParams.set('season', e.target.value); location.href = u;
     });
     SITE.hero({
-        tools: `<label class="hero-season"><span>Season</span>${seasonSelect('hero-season', season, seasons, 'select')}</label>`,
+        tools: CAREER_ONLY ? '' : `<label class="hero-season"><span>Season</span>${seasonSelect('hero-season', season, seasons, 'select')}</label>`,
         title: team, logo: GT.logo(mgr.name), size: page === 'overview' ? '' : 'compact', dots: page === 'overview',
         image: `background-${(mgr.id % 18) + 1}.png`,
         meta: [`Manager ${esc(mgr.name)}${division ? ' · ' + esc(division) : ''}`, esc(status),
                `Record: ${rec.text}${reg.length ? ` · ${GT.pts(GT.sum(reg, 'pf') / reg.length)} pts / game` : ''}`]
     });
-    onSeason('hero-season');
+    if (!CAREER_ONLY) onSeason('hero-season');
+
+    // position chips: the same size everywhere, one or two letters, one color per position
+    const POS_COLOR = { QB: '#d1495b', RB: '#2e86ab', WR: '#3b7a57', TE: '#edae49', K: '#8e7dbe', P: '#7a8b99', 'D/ST': '#4a4e69', HC: '#c06c84' };
+    const POS_ABBR = { 'D/ST': 'D' };
+    const posChip = pos => pos ? `<span class="pchip" style="background:${POS_COLOR[pos] || '#888'}" title="${esc(pos)}">${esc(POS_ABBR[pos] || pos)}</span>` : '';
 
     function resultRow(g) {
         const d = GT.weekDate(b, g.season, g.week);
@@ -700,5 +707,348 @@
         draw();
     }
 
-    ({ overview, schedule, 'roster-history': rosterHistory, 'stats-history': statsHistory, 'vs-nfl': vsNfl })[page]();
+    // ============================================================ DRAFT TENDENCIES (career)
+    // What this manager drafts round by round, how it compares with the league, and how picks did against their slot:
+    // within each position, every season's drafted players ranked by the fantasy points they scored that season (WR3 =
+    // third-most points among drafted WRs), against the order that position came off the board (WR10 = tenth WR taken).
+    async function draftTendencies() {
+        const [picksAll, ptsRows, grades, starts] = await Promise.all([
+            GT.query(`SELECT t.season, ti.overall_pick AS pick, ti.to_owner_id AS id, p.player_id AS pid, p.name, p.position AS pos, COALESCE(st.team, p.pro_team) AS nfl
+                      FROM transactions t JOIN transaction_items ti ON ti.transaction_id = t.transaction_id JOIN players p ON p.player_id = ti.player_id
+                      LEFT JOIN (${GT.SEASON_TEAM}) st ON st.season = t.season AND st.pid = p.player_id
+                      WHERE t.type = 'DRAFT' AND ti.item_type = 'DRAFT' AND ti.overall_pick IS NOT NULL ORDER BY t.season, ti.overall_pick`),
+            GT.query(`SELECT w.season, w.player_id AS pid, SUM(COALESCE(w.points, 0)) AS pts FROM player_week_points w
+                      WHERE w.player_id IN (SELECT ti.player_id FROM transactions t JOIN transaction_items ti ON ti.transaction_id = t.transaction_id
+                                            WHERE t.type = 'DRAFT' AND ti.item_type = 'DRAFT')
+                      GROUP BY w.season, w.player_id`),
+            GT.query('SELECT season, pre_grade AS pre, post_grade AS post, post_rank AS rank, provisional FROM draft_grades WHERE owner_id = $o', { $o: mgr.id }),
+            GT.query(`SELECT fr.season, frp.player_id AS pid, COUNT(*) AS starts, SUM(COALESCE(frp.actual_points, 0)) AS pts
+                      FROM fantasy_rosters fr JOIN fantasy_roster_players frp ON frp.roster_id = fr.roster_id
+                      WHERE fr.owner_id = $o AND frp.slot_position NOT IN ('BE', 'IR') GROUP BY fr.season, frp.player_id`, { $o: mgr.id })
+        ]);
+        const ptsOf = {}, startOf = {};
+        ptsRows.forEach(r => { ptsOf[`${r.season}|${r.pid}`] = r.pts; });
+        starts.forEach(r => { startOf[`${r.season}|${r.pid}`] = r; });
+        // teams per draft = managers who picked that season (round = pick / teams, rounded up)
+        const teams = {}, bySeason = {};
+        picksAll.forEach(p => { (teams[p.season] = teams[p.season] || new Set()).add(p.id); (bySeason[p.season] = bySeason[p.season] || []).push(p); });
+        Object.entries(bySeason).forEach(([s, list]) => {
+            list.forEach(p => { p.round = Math.ceil(p.pick / teams[s].size); p.pts = ptsOf[`${s}|${p.pid}`] || 0; });
+            const byPos = {};
+            list.forEach(p => { (byPos[p.pos] = byPos[p.pos] || []).push(p); });
+            Object.values(byPos).forEach(l => {
+                l.forEach((p, i) => { p.posPick = i + 1; });                      // list is in pick order
+                l.slice().sort((x, y) => y.pts - x.pts).forEach((p, i) => { p.posFinish = i + 1; p.delta = p.posPick - p.posFinish; });
+            });
+        });
+        const mine = picksAll.filter(p => p.id === mgr.id);
+        mine.forEach(p => { const s = startOf[`${p.season}|${p.pid}`]; p.starts = s ? s.starts : 0; p.startPts = s ? s.pts : 0; });
+        if (!mine.length) { content.innerHTML = `<div class="wrap page-pad"><p class="muted" style="margin-top:34px">No draft picks for ${esc(mgr.name)}.</p></div>`; return; }
+        const mySeasons = [...new Set(mine.map(p => p.season))].sort((x, y) => y - x);
+        const league = picksAll.filter(p => mySeasons.includes(p.season));              // the drafts he was in
+        const POS = ['QB', 'RB', 'WR', 'TE', 'K', 'P', 'D/ST', 'HC'].filter(p => league.some(x => x.pos === p));
+        const rounds = Math.max(...mine.map(p => p.round));
+        const share = (list, pos) => list.length ? list.filter(p => p.pos === pos).length / list.length : 0;
+        const pc = v => `${Math.round(v * 100)}%`;
+        const sgn = v => `${v > 0 ? '+' : ''}${v}`;
+        const avg = (l, f) => l.length ? l.reduce((t, p) => t + f(p), 0) / l.length : null;
+        const prk = (p, n) => `${String(p.pos || '').replace('/', '')}${n}`;   // WR10, DST20
+        const plink = p => p.pid > 0 ? `<a href="${url(`pages/players/stats.html?id=${p.pid}`)}">${esc(p.name)}</a>` : esc(p.name);
+        const pname = p => `<span class="pnm">${posChip(p.pos)}${plink(p)}</span>`;          // chip, then the name
+        const live = !b.finish[`${b.season}-${mgr.id}`] && mySeasons.includes(b.season);
+        const kpi = (l, v, s, tip = '') => `<div class="db-kpi"><span${tip ? ` data-tip="${esc(tip)}"` : ''}>${l}</span><b>${v}</b><small>${s}</small></div>`;
+        const VALUE_TIP = 'Compared within the position, among that season\'s drafted players. Drafted 10 = the tenth player taken at his position; finished 3 = the third-most fantasy points of the drafted players at his position that season. +/- = drafted spot minus finish: +7 means he outscored seven players at his position taken ahead of him.';
+
+        // the cards
+        const early = mine.filter(p => p.round <= 3);
+        const fav = POS.map(pos => [pos, early.filter(p => p.pos === pos).length]).sort((x, y) => y[1] - x[1])[0];
+        const avgDelta = avg(mine, p => p.delta);
+        const bestPick = mine.reduce((m, p) => !m || p.delta > m.delta ? p : m, null);
+        const groups = Object.values(mine.reduce((m, p) => { (m[p.pid] = m[p.pid] || []).push(p); return m; }, {}));
+        // favorite player: picked the most times; ties go to the earliest average pick
+        const favPlayer = groups.slice().sort((x, y) => y.length - x.length || avg(x, p => p.pick) - avg(y, p => p.pick))[0];
+
+        // position mix: much more than counts
+        const firstRound = (list, pos) => {                     // the round his first pick at the position came, averaged over drafts that had one
+            const per = mySeasons.map(s => list.filter(p => p.season === s && p.pos === pos)).filter(l => l.length).map(l => Math.min(...l.map(p => p.round)));
+            return per.length ? per.reduce((t, v) => t + v, 0) / per.length : null;
+        };
+        const mix = POS.map(pos => {
+            const m = mine.filter(p => p.pos === pos), lg = league.filter(p => p.pos === pos);
+            const best = m.reduce((x, p) => !x || p.delta > x.delta ? p : x, null), worst = m.reduce((x, p) => !x || p.delta < x.delta ? p : x, null);
+            return { pos, n: m.length, me: share(mine, pos), lg: share(league, pos), rd: avg(m, p => p.round), lgRd: avg(lg, p => p.round), first: firstRound(mine, pos),
+                     hit: m.length ? m.filter(p => p.delta > 0).length / m.length : null, val: avg(m, p => p.delta), starts: m.reduce((t, p) => t + p.starts, 0),
+                     startPts: m.reduce((t, p) => t + p.startPts, 0), best, worst };
+        });
+        const f1 = v => v == null ? '-' : v.toFixed(1);
+        const pickCell = p => p ? `<span class="dt-pk" title="${esc(`${p.name}, ${p.season} pick ${p.pick}: drafted ${prk(p, p.posPick)}, finished ${prk(p, p.posFinish)}`)}"><span class="nm">${esc(p.name)}</span>
+            <span class="yr">'${String(p.season).slice(2)}</span><b class="dl ${p.delta >= 0 ? 'up' : 'dn'}">${sgn(p.delta)}</b></span>` : '-';
+        // a grade as a fixed-size chip: draft day -> after the season
+        const gradeChip = (g, cls = '') => `<span class="gchip ${cls}">${esc(g || '-')}</span>`;
+
+        // draft day history: one row per draft
+        const gradeOf = Object.fromEntries(grades.map(g => [g.season, g]));
+        const history = mySeasons.map(s => {
+            const l = mine.filter(p => p.season === s), g = gradeOf[s] || {};
+            const top = l.reduce((x, p) => !x || p.delta > x.delta ? p : x, null);
+            return { season: s, slot: Math.min(...l.map(p => p.pick)), r1: l.find(p => p.round === 1), r2: l.find(p => p.round === 2), top,
+                     starts: l.reduce((t, p) => t + p.starts, 0), startPts: l.reduce((t, p) => t + p.startPts, 0), g, finish: b.finish[`${s}-${mgr.id}`] };
+        });
+        const sorted = mine.slice().sort((x, y) => y.delta - x.delta);
+        const pickTable = list => `<table class="data-table ph-fit">${SITE.cols('10%', '10%', '40%', '14%', '14%', '12%')}<thead><tr><th><span class="hl">Year</span><span class="hs">Yr</span></th>
+            <th class="num"><span class="hl">Pick</span><span class="hs">Pk</span></th><th>Player</th>
+            <th class="num" data-tip="${esc(VALUE_TIP)}"><span class="hl">Drafted</span><span class="hs">Drft</span></th><th class="num" data-tip="${esc(VALUE_TIP)}"><span class="hl">Finished</span><span class="hs">Fin</span></th>
+            <th class="num" data-tip="${esc(VALUE_TIP)}">+/-</th></tr></thead><tbody>${list.map(p => `<tr>
+            <td><span class="hl">${p.season}</span><span class="hs">'${String(p.season).slice(2)}</span></td><td class="num">${p.pick}</td><td>${pname(p)}</td><td class="num" title="${prk(p, p.posPick)}">${p.posPick}</td><td class="num" title="${prk(p, p.posFinish)}">${p.posFinish}</td>
+            <td class="num ${p.delta >= 0 ? 'win' : 'loss'}"><b>${sgn(p.delta)}</b></td></tr>`).join('')}</tbody></table>`;
+        const repeats = groups.filter(l => l.length > 1).sort((x, y) => y.length - x.length || avg(x, p => p.pick) - avg(y, p => p.pick));
+        const nflCount = Object.entries(mine.reduce((m, p) => { if (p.nfl) m[p.nfl] = (m[p.nfl] || 0) + 1; return m; }, {})).sort((x, y) => y[1] - x[1]).slice(0, 8);
+        const H = (l, s) => `<span class="hl">${l}</span><span class="hs">${s}</span>`;
+        // HOMER: the NFL team he drafts from most is the team he roots for
+        const fan = GT.fanTeam(mgr.name), topN = nflCount.length ? nflCount[0][1] : 0;
+        const nflName = (await NG.teams()).reduce((m, x) => (m[x.abbr] = x.name, m), {});
+        const homer = fan && topN && nflCount.some(([tm, n]) => tm === fan && n === topN)
+            ? `${mgr.name} drafts more ${nflName[fan] || fan} players (${topN}) than any other NFL team's, and that's his team.` : '';
+
+        content.innerHTML = `<div class="wrap page-pad">
+            <div class="panel-head" style="margin-top:34px"><div class="dt-head"><div class="eyebrow">${esc(mgr.name)} · ${mySeasons.length} drafts</div>
+                <div class="dt-title"><h2 class="section-title">Draft Tendencies</h2>${homer ? `<span class="homer" style="background:${GT.teamColor(fan) || 'var(--accent)'}" data-tip="${esc(homer)}">
+                    <img class="${GT.whiteLogo(fan) ? 'logo-white' : ''}" src="${url(`assets/nfl-logos/${fan.toLowerCase()}.png`)}" alt="${esc(fan)}">Homer</span>` : ''}</div>
+                <p class="section-copy">What ${esc(mgr.name)} takes round by round, how that compares with the rest of the league in the same drafts, and how the picks played against where they went.${live ? ` ${b.season} is still being played, so its picks are judged on the season so far.` : ''}</p></div></div>
+            <div class="db-kpis dt-kpis">${kpi('Picks', mine.length, `${mySeasons.length} drafts, ${mySeasons[mySeasons.length - 1]}-${mySeasons[0]}`) +
+                kpi('Favorite player', esc(favPlayer[0].name), favPlayer.length > 1 ? `drafted ${favPlayer.length}x, average pick ${Math.round(avg(favPlayer, p => p.pick))}` : 'no player drafted twice', 'The player drafted the most times; a tie goes to the one taken earliest on average.') +
+                kpi('Early-round favorite', fav && fav[1] ? fav[0] : '-', fav && fav[1] ? `${fav[1]} of ${early.length} picks in rounds 1-3` : 'no early picks') +
+                kpi('Avg pick vs slot', sgn(Math.round(avgDelta * 10) / 10), 'spots better (+) or worse (-) than drafted, by position', VALUE_TIP) +
+                kpi('Best value', esc(bestPick.name), `${bestPick.season}: drafted ${prk(bestPick, bestPick.posPick)}, finished ${prk(bestPick, bestPick.posFinish)}`, VALUE_TIP)}</div>
+            <div class="panel"><div class="panel-head" style="margin-bottom:12px"><h3 class="panel-title">Position by Round</h3>
+                <span class="seg seg-eq" id="dt-view"><button data-v="matrix" class="on">Matrix</button><button data-v="chart" data-tip="One distribution curve per position: the chance that a ${esc(mgr.name)} pick at that position comes in each round (a smoothed density over his drafts; each curve adds up to 100% across the rounds). The number in the legend is how many he has taken.">Probability</button></span></div>
+                <div id="dt-matrix"><table class="data-table dt-grid ph-fit"><colgroup><col class="dt-poscol">${Array.from({ length: rounds }, () => '<col>').join('')}</colgroup>
+                    <thead><tr><th>Pos</th>${Array.from({ length: rounds }, (_, i) => `<th class="num">${H(`R${i + 1}`, i + 1)}</th>`).join('')}</tr></thead>
+                    <tbody>${POS.map(pos => `<tr><td>${posChip(pos)}</td>${Array.from({ length: rounds }, (_, i) => {
+                        const r = i + 1, mineR = mine.filter(p => p.round === r), lgR = league.filter(p => p.round === r);
+                        const n = mineR.filter(p => p.pos === pos).length, s = mineR.length ? n / mineR.length : 0;
+                        return `<td class="num dt-cell" style="${n ? `background:rgba(var(--accent-rgb),${(0.12 + s * 0.6).toFixed(2)})` : ''}" title="Round ${r}: ${n} ${pos} of ${mineR.length} picks (${pc(s)}); league ${pc(share(lgR, pos))}">${n || ''}</td>`;
+                    }).join('')}</tr>`).join('')}</tbody></table>
+                    <p class="muted dt-note">Picks at each position in each round across ${mySeasons.length} drafts, shaded by that round's share. Hover a cell for the league's share in the same drafts.</p></div>
+                <div id="dt-chart" class="dt-chart" style="display:none"></div></div>
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Position Mix vs the League</h3>
+                <table class="data-table ph-fit" id="dt-mix">${SITE.cols('5%', '5%', '6%', '6%', '6%', '6%', '6%', '6%', '6%', '10%', '19%', '19%')}<thead><tr>
+                    <th>Pos</th><th class="num">${H('Picks', '#')}</th><th class="num">${H('His share', 'Him')}</th><th class="num">${H('League', 'Lg')}</th>
+                    <th class="num ph-x" data-tip="His average round at the position, against the league's in the same drafts.">Avg round</th><th class="num ph-x">Lg round</th>
+                    <th class="num ph-x" data-tip="The round of his first pick at the position, averaged over the drafts where he took one.">First taken</th>
+                    <th class="num ph-x" data-tip="${esc('Share of his picks at the position that finished better than where they were drafted (within the position).')}">Hit %</th>
+                    <th class="num" data-tip="${esc(VALUE_TIP)}">Avg +/-</th><th class="num ph-x" data-tip="Times he started the players he drafted at the position, and the points they scored for him.">Starts / pts</th>
+                    <th class="ph-x" data-tip="${esc(VALUE_TIP)}">Best pick</th><th class="ph-x" data-tip="${esc(VALUE_TIP)}">Worst pick</th></tr></thead>
+                    <tbody>${mix.map(m => `<tr><td>${posChip(m.pos)}</td><td class="num">${m.n}</td><td class="num">${pc(m.me)}</td>
+                        <td class="num ${m.me - m.lg >= 0.005 ? 'win' : m.me - m.lg <= -0.005 ? 'loss' : ''}">${pc(m.lg)}</td>
+                        <td class="num ph-x">${f1(m.rd)}</td><td class="num ph-x">${f1(m.lgRd)}</td><td class="num ph-x">${m.first == null ? '-' : f1(m.first)}</td>
+                        <td class="num ph-x">${m.hit == null ? '-' : pc(m.hit)}</td><td class="num ${m.val >= 0 ? 'win' : 'loss'}">${m.val == null ? '-' : sgn(Math.round(m.val * 10) / 10)}</td>
+                        <td class="num ph-x">${m.starts} / ${GT.pts(m.startPts)}</td>
+                        <td class="ph-x">${pickCell(m.best)}</td><td class="ph-x">${pickCell(m.worst)}</td></tr>`).join('')}</tbody></table>
+                <p class="muted dt-note">League share and round are from the same drafts ${esc(mgr.name)} was in. Green / red: ${esc(mgr.name)} takes the position more / less often than the league.</p></div>
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Draft Day History</h3>
+                <table class="data-table ph-fit" id="dt-hist">${SITE.cols('7%', '6%', '18%', '19%', '19%', '13%', '9%', '9%')}<thead><tr>
+                    <th>${H('Season', 'Yr')}</th><th class="num" data-tip="His first pick of the draft.">${H('Slot', 'Pk')}</th><th>Round 1</th><th class="ph-x">Round 2</th>
+                    <th class="ph-x" data-tip="${esc(VALUE_TIP)}">Best value</th>                    <th class="dt-c" data-tip="The league's draft grade on draft day, and after the season (Draft Grades page).">${H('Grade', 'Grd')}</th><th class="num ph-x">Grade rank</th><th class="num">${H('Finish', 'Fin')}</th></tr></thead>
+                    <tbody>${history.map(h => `<tr><td>${h.season}</td><td class="num">${h.slot}</td><td>${h.r1 ? pname(h.r1) : '-'}</td>
+                        <td class="ph-x">${h.r2 ? pname(h.r2) : '-'}</td>
+                        <td class="ph-x">${h.top ? `<span class="dt-pk"><span class="nm">${pname(h.top)}</span><b class="dl up">${sgn(h.top.delta)}</b></span>` : '-'}</td>
+                        <td class="dt-c">${h.g.pre ? `<span class="gpair">${gradeChip(h.g.pre)}<span class="garr">→</span>${gradeChip(h.g.post, 'on')}${h.g.provisional ? '<sup>*</sup>' : ''}</span>` : '-'}</td><td class="num ph-x">${h.g.rank ? ord(h.g.rank) : '-'}</td>
+                        <td class="num">${h.finish ? ord(h.finish) : '-'}</td></tr>`).join('')}</tbody></table>
+                ${grades.some(g => g.provisional) ? '<p class="muted dt-note">* Season in progress: the after-season grade is provisional.</p>' : ''}</div>
+            <div class="dt-row">
+                <div class="panel"><h3 class="panel-title" style="margin-bottom:12px" data-tip="${esc(VALUE_TIP)}">Best Value Picks</h3>${pickTable(sorted.slice(0, 8))}</div>
+                <div class="panel"><h3 class="panel-title" style="margin-bottom:12px" data-tip="${esc(VALUE_TIP)}">Biggest Misses</h3>${pickTable(sorted.slice(-8).reverse())}</div></div>
+            <div class="dt-row">
+                <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Drafted More Than Once</h3>${repeats.length ? `<div class="dt-repeat">${repeats.slice(0, 12).map(l =>
+                    `<span>${pname(l[0])} <small>${l.length}x · ${l.map(p => `'${String(p.season).slice(2)} R${p.round}`).join(', ')}</small></span>`).join('')}</div>` : '<p class="muted">Never drafted the same player twice.</p>'}</div>
+                <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Favorite NFL Teams</h3><div class="dt-nfl">${nflCount.map(([t, n]) =>
+                    `<span><img src="${url(`assets/nfl-logos/${t.toLowerCase()}.png`)}" alt="" onerror="this.src='${url('assets/nfl-logos/nfl.png')}';this.onerror=null"><b>${esc(t)}</b><small>${n}</small></span>`).join('')}</div></div></div>
+        </div>`;
+        ['dt-mix', 'dt-hist'].forEach(id => {                                // phone-hidden columns: the col follows its header
+            const t = document.getElementById(id);
+            [...t.querySelectorAll('thead th')].forEach((th, i) => { if (th.classList.contains('ph-x')) t.querySelectorAll('col')[i].classList.add('ph-x'); });
+        });
+
+        // the probability chart: one distribution curve per position. Where in the draft his picks at that position come,
+        // as a smoothed density (Gaussian kernel, about a round wide) over the rounds: the height at round r is the chance
+        // that a pick of his at that position lands in round r, so each curve sums to 100% across the rounds.
+        let chart;
+        const COLORS = POS_COLOR;
+        const BW = 1.0, STEP = 0.1;
+        const curve = pos => {
+            const rs = mine.filter(p => p.pos === pos).map(p => p.round);
+            if (!rs.length) return [];
+            const pts = [];
+            for (let x = 1; x <= rounds + 1e-9; x += STEP) {
+                const d = rs.reduce((t, r) => t + Math.exp(-0.5 * ((x - r) / BW) ** 2), 0) / (rs.length * BW * Math.sqrt(2 * Math.PI));
+                pts.push([Math.round(x * 10) / 10, d]);
+            }
+            const area = pts.reduce((t, q) => t + q[1], 0) * STEP;            // renormalise inside rounds 1..N (the tails are cut off)
+            return pts.map(([x, d]) => [x, Math.round(d / area * 1000) / 10]);
+        };
+        const drawChart = () => {
+            const el = document.getElementById('dt-chart');
+            if (!chart) chart = echarts.init(el);
+            const C = { muted: SITE.color('muted'), line: SITE.color('line-strong'), grid: SITE.color('track') };
+            const series = POS.map(pos => ({ pos, n: mine.filter(p => p.pos === pos).length, data: curve(pos) })).filter(s => s.n);
+            chart.setOption({
+                textStyle: { fontFamily: 'Inter, sans-serif' },
+                tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 },
+                           formatter: ps => `<b>Round ${Number(ps[0].axisValue).toFixed(1)}</b><br>${ps.slice().sort((x, y) => y.value[1] - x.value[1]).map(p =>
+                               `${p.marker}${p.seriesName} ${p.value[1].toFixed(1)}%`).join('<br>')}` },
+                legend: { top: 0, left: 'center', textStyle: { color: C.muted, fontSize: 10 }, itemWidth: 14, itemHeight: 8 },
+                grid: { left: 48, right: 16, top: 34, bottom: 34 },
+                xAxis: { type: 'value', min: 1, max: rounds, interval: 1, name: 'Round', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: C.muted, fontSize: 10 },
+                         axisLabel: { color: C.muted, fontSize: 10 }, axisLine: { lineStyle: { color: C.line } }, splitLine: { show: false } },
+                yAxis: { type: 'value', min: 0, name: 'Probability', nameTextStyle: { color: C.muted, fontSize: 10 },
+                         axisLabel: { color: C.muted, fontSize: 10, formatter: '{value}%' }, splitLine: { lineStyle: { color: C.grid } } },
+                series: series.map(s => ({ name: `${s.pos} (${s.n})`, type: 'line', smooth: true, symbol: 'none', data: s.data,
+                    lineStyle: { width: 2.5, color: COLORS[s.pos] }, itemStyle: { color: COLORS[s.pos] }, areaStyle: { color: COLORS[s.pos], opacity: 0.08 },
+                    emphasis: { focus: 'series' } }))
+            }, true);
+            chart.resize();
+        };
+        document.querySelectorAll('#dt-view button').forEach(btn => btn.addEventListener('click', () => {
+            const v = btn.dataset.v;
+            document.querySelectorAll('#dt-view button').forEach(x => x.classList.toggle('on', x === btn));
+            document.getElementById('dt-matrix').style.display = v === 'matrix' ? '' : 'none';
+            document.getElementById('dt-chart').style.display = v === 'chart' ? '' : 'none';
+            if (v === 'chart') drawChart();
+        }));
+        window.addEventListener('resize', () => chart && chart.resize());
+        window.addEventListener('themechange', () => chart && drawChart());
+    }
+
+    // ============================================================ RIVALRIES (career)
+    // Every opponent this manager has played: the record, streaks, every meeting and the games that stand out.
+    async function rivalry() {
+        const played = inSeason.filter(g => g.oppId && g.pf != null && g.pa != null);
+        if (!played.length) { content.innerHTML = `<div class="wrap page-pad"><p class="muted" style="margin-top:34px">No games for ${esc(mgr.name)}.</p></div>`; return; }
+        // both lineups of every game, for projections and each side's top scorer; the opponent's rank that week
+        const [lineupRows, oppRows] = await Promise.all([
+            GT.query(`SELECT fr.season, fr.week, fr.owner_id AS id, p.player_id AS pid, p.name, p.position AS pos, COALESCE(frp.actual_points, 0) AS pts, COALESCE(frp.projected_points, 0) AS proj
+                      FROM fantasy_rosters fr JOIN fantasy_roster_players frp ON frp.roster_id = fr.roster_id JOIN players p ON p.player_id = frp.player_id
+                      WHERE frp.slot_position NOT IN ('BE', 'IR') AND fr.season IN (${[...new Set(played.map(g => g.season))].join(',')})`),
+            GT.query('SELECT game_id AS gameId, score_rank_on_week AS rank, bench_score AS bench FROM matchup_team_stats WHERE opponent_owner_id = $o', { $o: mgr.id })
+        ]);
+        const lineup = {};
+        lineupRows.forEach(r => { (lineup[`${r.season}|${r.week}|${r.id}`] = lineup[`${r.season}|${r.week}|${r.id}`] || []).push(r); });
+        const oppOf = Object.fromEntries(oppRows.map(r => [r.gameId, r]));
+        played.forEach(g => {
+            const a = lineup[`${g.season}|${g.week}|${mgr.id}`] || [], z = lineup[`${g.season}|${g.week}|${g.oppId}`] || [];
+            const top = l => l.reduce((m, p) => !m || p.pts > m.pts ? p : m, null);
+            // a lineup's projection counts only when nearly every starter had one (some old weeks are missing most of them)
+            const projOf = l => l.length && l.filter(p => p.proj > 0).length >= l.length * 0.8 ? l.reduce((t, p) => t + p.proj, 0) : null;
+            g.proj = projOf(a); g.oppProj = projOf(z);
+            g.mvp = top(a); g.oppMvp = top(z);
+            const o = oppOf[g.gameId] || {};
+            g.oppRank = o.rank; g.oppBench = o.bench;
+        });
+        const PLAYOFF = ['Post-WC', 'Post-WB', 'Championship'];
+        const byOpp = {};
+        played.forEach(g => { (byOpp[g.oppId] = byOpp[g.oppId] || []).push(g); });
+        const streakOf = list => {
+            let cur = null, n = 0, bestW = 0, bestL = 0, run = 0, prev = null;
+            list.forEach(g => {
+                const r = GT.result(g);
+                run = r === prev ? run + 1 : 1; prev = r;
+                if (r === 'W') bestW = Math.max(bestW, run); if (r === 'L') bestL = Math.max(bestL, run);
+            });
+            for (let i = list.length - 1; i >= 0; i--) { const r = GT.result(list[i]); if (cur == null) cur = r; if (r !== cur) break; n++; }
+            return { cur: cur ? `${cur}${n}` : '-', bestW, bestL };
+        };
+        const lines = Object.entries(byOpp).map(([id, list]) => {
+            const r = GT.record(list), po = GT.record(list.filter(g => PLAYOFF.includes(g.period)));
+            const pf = GT.sum(list, 'pf'), pa = GT.sum(list, 'pa'), z = list[list.length - 1];
+            return { id: Number(id), opp: list[0].opp, list, rec: r, po, g: list.length, pf, pa, margin: (pf - pa) / list.length, ...streakOf(list),
+                     lastKey: z.season * 100 + z.week, last: `${z.season} W${z.week}` };
+        }).sort((x, y) => y.g - x.g || y.lastKey - x.lastKey);
+        let pick = lines.find(l => l.id === Number(param('vs'))) ? Number(param('vs')) : lines[0].id;
+        const sg = v => `${v > 0 ? '+' : ''}${GT.pts(v)}`;
+        const kpi = (l, v, s) => `<div class="db-kpi"><span>${l}</span><b>${v}</b><small>${s}</small></div>`;
+        const H = (l, s) => `<span class="hl">${l}</span><span class="hs">${s}</span>`;
+        content.innerHTML = `<div class="wrap page-pad">
+            <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${esc(mgr.name)} · career</div><h2 class="section-title">Rivalries</h2>
+                <p class="section-copy">Every opponent ${esc(mgr.name)} has faced: the record, the streaks and every meeting. Pick a rival, or click one in the table at the bottom.</p></div>
+                <label class="sx-f"><span>Rival</span><select class="select" id="rv-opp">${lines.slice().sort((x, y) => x.opp.localeCompare(y.opp)).map(l =>
+                    `<option value="${l.id}"${l.id === pick ? ' selected' : ''}>${esc(l.opp)} (${l.g})</option>`).join('')}</select></label></div>
+            <div class="vn-team" id="rv-head"></div>
+            <div class="db-kpis vn-kpis" id="rv-kpis"></div>
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:10px">Every Meeting</h3><div id="rv-chart" class="rv-chart"></div></div>
+            <div class="rv-cards" id="rv-cards"></div>
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Game Log</h3><table class="data-table ph-fit" id="rv-log"></table>
+                <p class="muted dt-note">Projected: each side's starting lineup projections (ESPN) going into the game; Upset = won as the underdog or lost as the favorite. Rank: where each score ranked among every team that week. Click a game for its game center.</p></div>
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">All Rivals</h3><table class="data-table rv-all ph-fit" id="rv-all"></table></div></div>`;
+        let chart;
+        const hideCols = id => {
+            const t = document.getElementById(id);
+            [...t.querySelectorAll('thead th')].forEach((th, i) => { if (th.classList.contains('ph-x')) t.querySelectorAll('col')[i].classList.add('ph-x'); });
+        };
+        const resCell = g => { const r = GT.result(g); return `<b class="${r === 'W' ? 'win' : r === 'L' ? 'loss' : ''}">${r}</b>`; };
+        const mvpCell = p => p ? `${esc(p.name)} <span class="muted">${GT.pts(p.pts)}</span>` : '-';
+        function draw() {
+            const l = lines.find(x => x.id === pick), list = l.list;
+            const withProj = list.filter(g => g.proj != null && g.oppProj != null);
+            const upsets = withProj.filter(g => (g.pf > g.pa) !== (g.proj > g.oppProj) && g.pf !== g.pa).length;
+            document.getElementById('rv-head').innerHTML = `<img src="${GT.logo(mgr.name)}" alt=""><b>${esc(mgr.name)}</b><span>${l.rec.text}</span><b>${esc(l.opp)}</b><img src="${GT.logo(l.opp)}" alt="">`;
+            document.getElementById('rv-kpis').innerHTML =
+                kpi('Record', l.rec.text, `${l.g} meeting${l.g === 1 ? '' : 's'}${l.po.w + l.po.l + l.po.t ? ` · playoffs ${l.po.text}` : ''}`) +
+                kpi('Points a game', `${GT.pts(l.pf / l.g)}-${GT.pts(l.pa / l.g)}`, `average margin ${sg(l.margin)}`) +
+                kpi('Current streak', l.cur, `last met ${l.last} · longest W${l.bestW} / L${l.bestL}`) +
+                kpi('Upsets', upsets, `of ${withProj.length} games went against the projections`);
+            const C = { win: SITE.color('win'), loss: SITE.color('loss'), muted: SITE.color('muted'), line: SITE.color('line-strong'), grid: SITE.color('track') };
+            if (!chart) chart = echarts.init(document.getElementById('rv-chart'));
+            chart.setOption({
+                textStyle: { fontFamily: 'Inter, sans-serif' }, animationDurationUpdate: 300,
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 },
+                           formatter: ps => { const g = list[ps[0].dataIndex]; return `<b>${g.season} ${esc(GT.periodLabel(g.period, g.week))}</b><br>${esc(mgr.name)} ${GT.pts(g.pf)} - ${GT.pts(g.pa)} ${esc(l.opp)}`; } },
+                grid: { left: 40, right: 12, top: 12, bottom: 30 },
+                xAxis: { type: 'category', data: list.map(g => `'${String(g.season).slice(2)} W${g.week}${PLAYOFF.includes(g.period) ? '*' : ''}`), axisLabel: { color: C.muted, fontSize: 10 }, axisLine: { lineStyle: { color: C.line } } },
+                yAxis: { type: 'value', axisLabel: { color: C.muted, fontSize: 10, formatter: v => (v > 0 ? '+' : '') + v }, splitLine: { lineStyle: { color: C.grid } } },
+                series: [{ type: 'bar', barMaxWidth: 26, data: list.map(g => ({ value: Number((g.pf - g.pa).toFixed(2)), itemStyle: { color: g.pf >= g.pa ? C.win : C.loss } })) }]
+            }, true);
+            const wins = list.filter(g => g.pf > g.pa), losses = list.filter(g => g.pf < g.pa);
+            const big = wins.reduce((m, g) => !m || g.pf - g.pa > m.pf - m.pa ? g : m, null);
+            const bad = losses.reduce((m, g) => !m || g.pa - g.pf > m.pa - m.pf ? g : m, null);
+            const close = list.reduce((m, g) => !m || Math.abs(g.pf - g.pa) < Math.abs(m.pf - m.pa) ? g : m, null);
+            const card = (title, g) => `<a class="panel rv-card" ${g ? `href="${GT.gameHref(g.gameId)}"` : ''}><span>${title}</span>${g
+                ? `<b>${GT.pts(g.pf)}-${GT.pts(g.pa)}</b><small>${g.season} ${esc(GT.periodLabel(g.period, g.week))} · ${sg(g.pf - g.pa)}</small>` : '<b>-</b><small>none yet</small>'}</a>`;
+            document.getElementById('rv-cards').innerHTML = card('Biggest win', big) + card('Worst loss', bad) + card('Closest game', close);
+            document.getElementById('rv-log').innerHTML = `${SITE.cols('6%', '12%', '11%', '6%', '7%', '11%', '7%', '15%', '15%', '10%')}<thead><tr><th>${H('Season', 'Yr')}</th><th>Game</th>
+                <th class="num">Score</th><th>${H('Result', 'Res')}</th><th class="num">${H('Margin', '+/-')}</th><th class="num ph-x">Projected</th><th class="ph-x"></th>
+                <th class="ph-x">${esc(mgr.name)}'s top scorer</th><th class="ph-x">${esc(l.opp)}'s top scorer</th><th class="num ph-x">Rank</th></tr></thead>
+                <tbody>${list.slice().reverse().map(g => {
+                    const fav = g.proj != null && g.oppProj != null ? g.proj - g.oppProj : null;
+                    const upset = fav != null && g.pf !== g.pa && (g.pf > g.pa) !== (fav > 0);
+                    return `<tr class="row-link" data-href="${GT.gameHref(g.gameId)}">
+                    <td>${g.season}</td><td title="${esc(GT.periodLabel(g.period, g.week))}">${esc(GT.periodLabel(g.period, g.week))}</td><td class="num">${GT.pts(g.pf)}-${GT.pts(g.pa)}</td><td>${resCell(g)}</td>
+                    <td class="num">${sg(g.pf - g.pa)}</td><td class="num ph-x" title="${fav == null ? '' : `${esc(mgr.name)} ${fav >= 0 ? 'favored' : 'underdog'} by ${GT.pts(Math.abs(fav))}`}">${fav == null ? '-' : `${GT.pts(g.proj)}-${GT.pts(g.oppProj)}`}</td>
+                    <td class="ph-x">${upset ? '<span class="pill pill-dark rv-upset">Upset</span>' : ''}</td>
+                    <td class="ph-x">${mvpCell(g.mvp)}</td><td class="ph-x">${mvpCell(g.oppMvp)}</td>
+                    <td class="num ph-x">${g.rank ? ord(g.rank) : '-'} / ${g.oppRank ? ord(g.oppRank) : '-'}</td></tr>`; }).join('')}</tbody>`;
+            hideCols('rv-log');
+            document.querySelectorAll('#rv-log tr.row-link').forEach(tr => tr.addEventListener('click', e => { if (!e.target.closest('a')) location.href = tr.dataset.href; }));
+            document.getElementById('rv-all').innerHTML = `${SITE.cols('26%', '11%', '13%', '12%', '13%', '11%', '14%')}<thead><tr><th>Opponent</th><th class="num">${H('Games', 'G')}</th>
+                <th class="num">${H('Record', 'Rec')}</th><th class="num ph-x">Win %</th><th class="num">${H('Avg margin', '+/-')}</th><th class="num">${H('Streak', 'Strk')}</th><th class="num ph-x">Last met</th></tr></thead><tbody>${lines.map(x => `
+                <tr class="row-pick ${x.id === pick ? 'me' : ''}" data-id="${x.id}"><td><span class="team-cell"><img src="${GT.logo(x.opp)}" alt=""><b>${esc(x.opp)}</b></span></td>
+                <td class="num">${x.g}</td><td class="num"><b>${x.rec.text}</b></td><td class="num ph-x">${(x.rec.pct * 100).toFixed(1)}%</td>
+                <td class="num ${x.margin >= 0 ? 'win' : 'loss'}">${sg(x.margin)}</td><td class="num">${x.cur}</td><td class="num ph-x">${x.last}</td></tr>`).join('')}</tbody>`;
+            hideCols('rv-all');
+            document.querySelectorAll('#rv-all tr').forEach(tr => tr.dataset.id && tr.addEventListener('click', () => setOpp(Number(tr.dataset.id), true)));
+        }
+        function setOpp(id, scroll) {
+            pick = id;
+            document.getElementById('rv-opp').value = id;
+            const u = new URL(location.href); u.searchParams.set('vs', id); history.replaceState(null, '', u);
+            draw();
+            if (scroll) document.getElementById('rv-head').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        document.getElementById('rv-opp').addEventListener('change', e => setOpp(Number(e.target.value)));
+        window.addEventListener('resize', () => chart && chart.resize());
+        draw();
+    }
+
+    ({ overview, schedule, 'roster-history': rosterHistory, 'stats-history': statsHistory, 'vs-nfl': vsNfl,
+       'draft-tendencies': draftTendencies, rivalry })[page]();
 })();

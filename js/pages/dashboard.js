@@ -7,9 +7,7 @@
     const content = document.getElementById('content');
     const b = await GT.load();
     SITE.subHeader({ crumbs: [['Stats']],
-                     tabs: [{ label: 'Dashboard', href: url('pages/stats.html'), active: true },
-                            { label: 'Stat Finder', href: url('pages/stat-finder.html') },
-                            { label: 'Player Regression', href: url('pages/player-regression.html') }] });
+                     tabs: SITE.statsTabs('dashboard') });
     SITE.hero({ title: 'League Analytics', size: 'short', dots: false, image: 'background-15.png',
                 meta: ['Playoff odds, win probability and expectation vs performance'] });
     content.innerHTML = '<div class="wrap page-pad"><div class="loading" style="margin-top:40px">Loading every game and lineup...</div></div>';

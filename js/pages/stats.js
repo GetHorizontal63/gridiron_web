@@ -200,9 +200,10 @@
                 if (!draftRows) {
                     const [picks, teams] = await Promise.all([GT.query(`
                         SELECT t.season, ti.overall_pick AS pick, ti.to_owner_id AS id, o.display_name AS mgr, p.player_id AS pid, p.name,
-                               p.position AS pos, p.pro_team AS nfl
+                               p.position AS pos, COALESCE(st.team, p.pro_team) AS nfl
                         FROM transactions t JOIN transaction_items ti ON ti.transaction_id = t.transaction_id
                         JOIN players p ON p.player_id = ti.player_id JOIN owners o ON o.owner_id = ti.to_owner_id
+                        LEFT JOIN (${GT.SEASON_TEAM}) st ON st.season = t.season AND st.pid = p.player_id
                         WHERE t.type = 'DRAFT' AND ti.item_type = 'DRAFT'`), GT.query('SELECT season, num_teams AS n FROM seasons')]);
                     const nTeams = Object.fromEntries(teams.map(t => [t.season, t.n]));
                     const started = {};
@@ -256,6 +257,22 @@
     const f = { from: allSeasons[allSeasons.length - 1], to: allSeasons[0], period: 'regular', manager: 0, pos: '', q: '', min: view.minDefault || 0, lineup: 'started', result: '', round: '', kind: '', nfl: '', opp: '' };
     let sort = { key: view.sort[0], dir: view.sort[1] };
     let page = 1;
+    // shareable links: every filter and the sort live in the URL (only what differs from the defaults)
+    const DEFAULTS = { ...f }, NUMERIC = ['from', 'to', 'manager', 'min'];
+    Object.keys(f).forEach(k => {
+        const v = param(k);
+        if (v == null || v === '') return;
+        if (NUMERIC.includes(k)) { if (!isNaN(Number(v))) f[k] = Number(v); } else f[k] = v;
+    });
+    if (f.from > f.to) { const tmp = f.from; f.from = f.to; f.to = tmp; }
+    const sp = String(param('sort') || '').split(':');
+    if (view.cols.some(c => c.k === sp[0])) sort = { key: sp[0], dir: sp[1] === 'asc' ? 1 : -1 };
+    function saveUrl() {
+        const u = new URL(location.href);
+        Object.keys(f).forEach(k => { if (String(f[k]) !== String(DEFAULTS[k]) && f[k] !== '') u.searchParams.set(k, f[k]); else u.searchParams.delete(k); });
+        if (sort.key !== view.sort[0] || sort.dir !== view.sort[1]) u.searchParams.set('sort', `${sort.key}:${sort.dir === 1 ? 'asc' : 'desc'}`); else u.searchParams.delete('sort');
+        history.replaceState(null, '', u);
+    }
 
     SITE.subHeader({ crumbs: [['Stats', url('pages/stats.html')], ['Stat Finder']],      // the dataset is the active tab
                      tabs: Object.entries(VIEWS).map(([k, v]) => ({ label: v.label, href: url(`pages/stat-finder.html?view=${k}`), active: k === viewKey })) });
@@ -338,13 +355,14 @@
         const k = th.dataset.k;
         if (sort.key === k) sort.dir = -sort.dir;
         else sort = { key: k, dir: view.cols.find(c => c.k === k).num ? -1 : 1 };     // numbers start high, text starts A-Z
-        page = 1; render();
+        page = 1; saveUrl(); render();
     }));
     let timer;
     document.querySelectorAll('[data-f]').forEach(el => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => {
         const k = el.dataset.f;
         f[k] = ['from', 'to', 'manager', 'min'].includes(k) ? Number(el.value) : el.value;
         if (f.from > f.to) { const t = f.from; f.from = f.to; f.to = t; document.querySelector('[data-f="from"]').value = f.from; document.querySelector('[data-f="to"]').value = f.to; }
+        saveUrl();
         clearTimeout(timer); timer = setTimeout(refresh, el.tagName === 'INPUT' ? 200 : 0);
     }));
     document.getElementById('sx-reset').addEventListener('click', () => { location.href = url(`pages/stat-finder.html?view=${viewKey}`); });

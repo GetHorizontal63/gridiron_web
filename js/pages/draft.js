@@ -18,7 +18,8 @@
     const [pickRows, valueRows] = await Promise.all([
         GT.query(`SELECT d.*, p.name FROM draft_picks d JOIN players p ON p.player_id = d.player_id WHERE d.season = $s ORDER BY d.overall_pick`, { $s: season }),
         GT.query(`SELECT v.player_id AS pid, p.name, v.pos, v.proj_points AS proj, v.proj_pos_rank AS prank, v.actual_points AS pts, v.actual_vorp AS avorp,
-                         v.games, v.drafted_pick AS pick, p.pro_team AS team FROM player_values v JOIN players p ON p.player_id = v.player_id WHERE v.season = $s`, { $s: season })
+                         v.games, v.drafted_pick AS pick, COALESCE(st.team, p.pro_team) AS team FROM player_values v JOIN players p ON p.player_id = v.player_id
+                         LEFT JOIN (${GT.SEASON_TEAM}) st ON st.season = v.season AND st.pid = p.player_id WHERE v.season = $s`, { $s: season })
     ]);
     const val = Object.fromEntries(valueRows.map(v => [v.pid, v]));
     // a season in progress: projections are compared pro rata (weeks played of a 17-week fantasy season)

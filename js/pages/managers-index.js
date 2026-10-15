@@ -7,6 +7,7 @@
                                    FROM matchup_team_stats t JOIN matchups m ON m.game_id = t.game_id
                                    WHERE m.season_period = 'Regular' GROUP BY t.owner_id`);
     const stats = Object.fromEntries(career.map(c => [c.id, c]));
+    const homers = await GT.homers();                     // HOMER: drafts his own NFL team the most
     const titles = id => Object.entries(b.finish).filter(([k, p]) => k.endsWith(`-${id}`) && p === 1).length;
     const active = b.owners.filter(o => o.last === b.season);
     // reigning champion: winner of the most recent season with a final placement
@@ -36,11 +37,14 @@
                 const t = titles(o.id);
                 const l = s.gp - s.w - s.ti;
                 const isReigning = o.id === reigning;
+                const hm = homers.get(o.id);                 // a right-hand band, the champion band's counterpart
                 // champions get a left bar (gold for the reigning champion) that carries the title count
                 const label = `Champion${t > 1 ? ` ×${t}` : ''}`;
-                return `<a class="m-tile${t ? ' champ' : ''}${isReigning ? ' reigning' : ''}" href="${url(`pages/managers/overview.html?m=${o.id}`)}"${t ? ` title="${isReigning ? 'Reigning champion · ' : ''}${label}"` : ''}>
+                return `<a class="m-tile${t ? ' champ' : ''}${isReigning ? ' reigning' : ''}${hm ? ' is-homer' : ''}" href="${url(`pages/managers/overview.html?m=${o.id}`)}"${t ? ` title="${isReigning ? 'Reigning champion · ' : ''}${label}"` : ''}>
                     ${t ? `<span class="champ-bar"><span>${label}</span></span>` : ''}
-                    <img src="${GT.logo(o.name)}" alt="">
+                    <span class="m-wm" aria-hidden="true"><img src="${GT.logo(o.name)}" alt=""></span>
+                    ${hm ? `<span class="homer-bar" style="background:${GT.teamColor(hm.team) || 'var(--accent)'}" title="Homer: drafts more ${esc(hm.team)} players than any other NFL team's, and that's his team">
+                        <i class="hb-dot"><img class="${GT.whiteLogo(hm.team) ? 'logo-white' : ''}" src="${url(`assets/nfl-logos/${hm.team.toLowerCase()}.png`)}" alt="${esc(hm.team)}"></i><span>Homer</span></span>` : ''}
                     <div class="m-info"><div class="m-top"><h3>${esc(o.name)}</h3></div>
                         <p>${esc(GT.teamName(b, o.name, o.last))}</p>
                         <p>${o.first}-${o.last} · ${s.w}-${l}${s.ti ? '-' + s.ti : ''} career</p></div>

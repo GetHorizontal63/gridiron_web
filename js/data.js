@@ -39,6 +39,38 @@
         return base;
     }
 
+    // The NFL team each manager roots for (the HOMER tag), from OLD/data/team_abbreviations.json (abbreviations.NFL;
+    // managers without one there have none here). The web build doesn't publish OLD/, so keep this in step with that file.
+    const FAN_TEAM = { anthony: 'NO', armando: 'DAL', brennan: 'MIA', caty: 'HOU', cubby: 'CLE', devin: 'GB', gabe: 'GB', isaiah: 'CAR', jack: 'CAR', jackson: 'LAC', jason: 'NO', jeffrey: 'GB', justin: 'NYJ', kevin: 'NE', mario: 'SF', melanie: 'IND', omar: 'SF', patric: 'MIN', peter: 'CAR', tucker: 'HOU' };
+    const fanTeam = name => FAN_TEAM[String(name).toLowerCase()] || null;
+    // each NFL team's primary color (NEW/data/league_data/nfl/teams.json, which the web build doesn't publish)
+    const NFL_COLOR = { ARI: '#97233F', ATL: '#A71930', BAL: '#241773', BUF: '#00338D', CAR: '#0085CA', CHI: '#0B162A', CIN: '#FB4F14', CLE: '#311D00', DAL: '#003594', DEN: '#FB4F14', DET: '#0076B6', GB: '#203731', HOU: '#03202F', IND: '#002C5F', JAX: '#006778', KC: '#E31837', LAC: '#0080C6', LAR: '#003594', LV: '#000000', MIA: '#008E97', MIN: '#4F2683', NE: '#002244', NO: '#D3BC8D', NYG: '#0B2265', NYJ: '#125740', PHI: '#004C54', PIT: '#FFB612', SEA: '#002244', SF: '#AA0000', TB: '#D50A0A', TEN: '#0C2340', WAS: '#5A1414', WSH: '#5A1414' };
+    const teamColor = abbr => NFL_COLOR[String(abbr || '').toUpperCase()] || null;
+    // logos that disappear on their own team color: drawn in solid white there
+    const WHITE_LOGO = new Set(['NYJ']);
+    const whiteLogo = abbr => WHITE_LOGO.has(String(abbr || '').toUpperCase());
+    // Each player's NFL team at the start of a season, for draft picks: his team in the earliest week he is on any league roster
+    // that season (week 1 for nearly every drafted player; lineups lock at week 1's Thursday kickoff, just after the drafts).
+    // Join it as  LEFT JOIN (${SEASON_TEAM}) st ON st.season = <season> AND st.pid = <player id>  and use COALESCE(st.team, p.pro_team).
+    const SEASON_TEAM = `SELECT fr.season AS season, f.player_id AS pid, f.pro_team AS team, MIN(fr.week) AS wk
+        FROM fantasy_rosters fr JOIN fantasy_roster_players f ON f.roster_id = fr.roster_id
+        WHERE f.pro_team IS NOT NULL AND f.pro_team != 'TEAM0' GROUP BY fr.season, f.player_id`;
+
+    // Homers: managers whose most-drafted NFL team (career; a tie counts) is the team they root for. owner id -> { team, n }
+    let homersP;
+    const homers = () => homersP || (homersP = q(`
+        SELECT ti.to_owner_id AS id, o.display_name AS name, COALESCE(st.team, p.pro_team) AS nfl, COUNT(*) AS n
+        FROM transactions t JOIN transaction_items ti ON ti.transaction_id = t.transaction_id
+        JOIN players p ON p.player_id = ti.player_id JOIN owners o ON o.owner_id = ti.to_owner_id
+        LEFT JOIN (${SEASON_TEAM}) st ON st.season = t.season AND st.pid = p.player_id
+        WHERE t.type = 'DRAFT' AND ti.item_type = 'DRAFT' AND COALESCE(st.team, p.pro_team) IS NOT NULL
+        GROUP BY ti.to_owner_id, COALESCE(st.team, p.pro_team)`).then(rows => {
+        const top = {}, out = new Map();
+        rows.forEach(r => { top[r.id] = Math.max(top[r.id] || 0, r.n); });
+        rows.forEach(r => { if (r.n === top[r.id] && fanTeam(r.name) === r.nfl) out.set(r.id, { team: r.nfl, n: r.n }); });
+        return out;
+    }));
+
     const logo = name => SITE.url(`assets/manager-logos/${LOGOS.has(String(name).toLowerCase()) ? String(name).toLowerCase() : 'default'}.png`);
 
     // Team name for a season. Never borrowed from another season: a missing name shows as the manager's team
@@ -83,9 +115,10 @@
 
     // Draft picks for one manager in one season (from the ESPN draft log)
     const draft = (id, season) => q(`
-        SELECT ti.overall_pick AS pick, p.player_id AS pid, p.name, p.position AS pos, p.pro_team AS team
+        SELECT ti.overall_pick AS pick, p.player_id AS pid, p.name, p.position AS pos, COALESCE(st.team, p.pro_team) AS team
         FROM transactions t JOIN transaction_items ti ON ti.transaction_id = t.transaction_id
         JOIN players p ON p.player_id = ti.player_id
+        LEFT JOIN (${SEASON_TEAM}) st ON st.season = t.season AND st.pid = p.player_id
         WHERE t.type = 'DRAFT' AND ti.item_type = 'DRAFT' AND t.season = $season AND ti.to_owner_id = $id
         ORDER BY ti.overall_pick`, { $id: Number(id), $season: Number(season) });
 
@@ -163,5 +196,5 @@
 
     window.GT = { load, logo, teamName, manager, games, result, record, sum, weekDate, fmtDate, fmtTime,
                   periodLabel, pts, draft, roster, latestRosterIds, slotSort, isStarter, standings, divisionCards, managerHref, managerLink, gameHref, query: q, PERIOD,
-                  liveGames, updatedText };
+                  liveGames, updatedText, fanTeam, teamColor, whiteLogo, homers, SEASON_TEAM };
 })();

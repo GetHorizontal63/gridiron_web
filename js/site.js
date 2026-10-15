@@ -13,6 +13,8 @@
             { key: 'roster-history', label: 'Roster History', href: 'pages/managers/roster-history.html', needs: 'm' },
             { key: 'stats-history', label: 'Manager Stats History', href: 'pages/managers/stats-history.html', needs: 'm' },
             { key: 'vs-nfl', label: 'Vs the NFL', href: 'pages/managers/vs-nfl.html', needs: 'm' },
+            { key: 'draft-tendencies', label: 'Draft Tendencies', href: 'pages/managers/draft-tendencies.html', needs: 'm' },
+            { key: 'rivalry', label: 'Rivalries', href: 'pages/managers/rivalry.html', needs: 'm' },
             { key: 'where-we-marched', label: 'Where We Marched', href: 'pages/managers/where-we-marched.html', menuOnly: true }   // menu only, not a manager tab
         ] },
         { key: 'players', label: 'Players', href: 'pages/players/index.html', children: [
@@ -50,6 +52,11 @@
             { key: 'moments', label: 'Historic League Moments', href: 'pages/past-seasons/moments.html', menuOnly: true }   // cross-season: tab only on All Seasons
         ] }
     ];
+    // the Stats section's pages (its tab row); statsTabs(key) marks one active
+    const STATS_PAGES = [['dashboard', 'Dashboard', 'pages/stats.html'], ['stat-finder', 'Stat Finder', 'pages/stat-finder.html'],
+                         ['player-regression', 'Player Regression', 'pages/player-regression.html'], ['schedule-luck', 'Schedule Luck', 'pages/schedule-luck.html'],
+                         ['lineup-regret', 'Lineup Regret', 'pages/lineup-regret.html']];
+    const statsTabs = active => STATS_PAGES.map(([k, label, href]) => ({ label, href: ROOT + href, active: k === active }));
     const NAV = [{ key: 'feed', label: 'Stats', href: 'pages/stats.html' }, ...SITE_MAP.filter(g => !g.hidden).map(({ key, label, href }) => ({ key, label, href }))];
 
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -279,5 +286,5 @@
     renderHeader();
     renderFooter();
     const color = name => getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();   // theme colour, e.g. color('accent')
-    window.SITE = { ROOT, url, esc, param, subHeader, sectionTabs, hero, focusImage, randomBg, bgFocus, setSeason, cols, color, SITE_MAP };
+    window.SITE = { ROOT, url, esc, param, subHeader, sectionTabs, hero, focusImage, randomBg, bgFocus, statsTabs, setSeason, cols, color, SITE_MAP };
 })();

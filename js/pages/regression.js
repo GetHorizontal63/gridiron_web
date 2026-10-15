@@ -11,8 +11,7 @@
     const { esc, url, param } = SITE;
     const content = document.getElementById('content');
     SITE.subHeader({ crumbs: [['Stats', url('pages/stats.html')], ['Player Regression']],
-                     tabs: [{ label: 'Dashboard', href: url('pages/stats.html') }, { label: 'Stat Finder', href: url('pages/stat-finder.html') },
-                            { label: 'Player Regression', href: url('pages/player-regression.html'), active: true }] });
+                     tabs: SITE.statsTabs('player-regression') });
     const data = await fetch(url('data/player_stats/regression.json')).then(r => r.json()).catch(() => null);
     if (!data) { content.innerHTML = '<div class="wrap"><p class="empty">Player data is not available.</p></div>'; return; }
     const S = data.scoring_season;
