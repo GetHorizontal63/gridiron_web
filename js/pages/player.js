@@ -495,10 +495,50 @@
         content.innerHTML = `<div class="wrap page-pad">
             <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">Since 2019</div><h2 class="section-title">Achievements</h2></div></div>
             <div class="stat-tiles">${marks.map(([l, v]) => tile(v, l)).join('')}</div>
+            <div id="league-teams"></div>
             <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Milestone Seasons</h3>
                 ${yearMarks.length ? `<div class="table-scroll"><table class="data-table">${SITE.cols('12%', '88%')}<thead><tr><th>Season</th><th>Milestones</th></tr></thead><tbody>
                     ${yearMarks.map(x => `<tr><td><b>${x.s}</b></td><td>${esc(x.out.join(' · '))}</td></tr>`).join('')}</tbody></table></div>`
                     : '<p class="muted">No milestone seasons yet (1,000 yards, 4,000 passing, 100 catches, 10 TDs, 300 fantasy points).</p>'}</div></div>`;
+        leagueTeams();
+    }
+
+    // The league teams he truly played for (75%+ of the regular season and all of the postseason): champions, playoff teams,
+    // Gulag teams (the losers bracket) and Chumpionship teams (last place)
+    async function leagueTeams() {
+        const el = document.getElementById('league-teams'); if (!el) return;
+        const [teams, places, post] = await Promise.all([
+            // a team counts when he was on its roster for at least 75% of the regular season AND every postseason week
+            GT.query(`WITH wk AS (SELECT season, week, MAX(CASE WHEN season_period = 'Regular' THEN 0 ELSE 1 END) AS post FROM matchups GROUP BY season, week),
+                           tot AS (SELECT season, SUM(post = 0) AS reg, SUM(post = 1) AS post FROM wk GROUP BY season),
+                           mine AS (SELECT fr.season, fr.owner_id AS id, SUM(wk.post = 0) AS reg, SUM(wk.post = 1) AS post
+                                    FROM fantasy_roster_players frp JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id
+                                    JOIN wk ON wk.season = fr.season AND wk.week = fr.week WHERE frp.player_id = $id GROUP BY fr.season, fr.owner_id)
+                      SELECT mine.season, mine.id, o.display_name AS mgr, mine.reg, mine.post, tot.reg AS treg, tot.post AS tpost
+                      FROM mine JOIN tot ON tot.season = mine.season JOIN owners o ON o.owner_id = mine.id
+                      WHERE mine.reg >= 0.75 * tot.reg AND tot.post > 0 AND mine.post = tot.post`, { $id: Number(id) }),
+            GT.query(`SELECT season, owner_id AS id, place, (SELECT MAX(place) FROM final_placements f2 WHERE f2.season = f.season) AS last FROM final_placements f`),
+            GT.query(`SELECT DISTINCT m.season, t.owner_id AS id, CASE WHEN m.season_period IN ('Post-WC', 'Post-WB', 'Championship') THEN 'P' ELSE 'G' END AS side
+                      FROM matchups m JOIN matchup_team_stats t ON t.game_id = m.game_id
+                      WHERE m.season_period IN ('Post-WC', 'Post-WB', 'Championship', 'Post-LB', 'Post-LP', 'Chumpionship')`)
+        ]);
+        const place = {}; places.forEach(r => { place[`${r.season}|${r.id}`] = r; });
+        const side = {}; post.forEach(r => { (side[`${r.season}|${r.id}`] = side[`${r.season}|${r.id}`] || new Set()).add(r.side); });
+        const groups = { champ: [], playoff: [], gulag: [], chump: [] };
+        teams.forEach(tm => {
+            const k = `${tm.season}|${tm.id}`, pl = place[k], sd = side[k] || new Set();
+            if (pl && pl.place === 1) groups.champ.push(tm);
+            if (sd.has('P')) groups.playoff.push(tm);
+            if (sd.has('G')) groups.gulag.push(tm);
+            if (pl && pl.place === pl.last) groups.chump.push(tm);
+        });
+        const CARDS = [['champ', 'Championship teams', 'Won the league title'], ['playoff', 'Playoff teams', 'Made the championship bracket'],
+                       ['gulag', 'Gulag teams', 'Played in the losers bracket'], ['chump', 'Chumpionship teams', 'Finished last']];
+        const chips = list => list.length ? list.sort((x, y) => y.season - x.season).map(tm =>
+            `<a class="lt-chip" href="${GT.managerHref(tm.mgr, tm.season)}"><img src="${GT.logo(tm.mgr)}" alt="">${tm.season} ${esc(tm.mgr)}</a>`).join('') : '<span class="muted">None</span>';
+        el.innerHTML = `<div class="panel"><div class="panel-head"><h3 class="panel-title">League Teams</h3><span class="muted">On the roster for 75%+ of the regular season and every postseason week</span></div>
+            <div class="lt-grid">${CARDS.map(([k, label, sub]) => `<div class="lt-card lt-${k}"><div class="lt-top"><b>${groups[k].length}</b><span>${label}<small>${sub}</small></span></div>
+                <div class="lt-list">${chips(groups[k])}</div></div>`).join('')}</div></div>`;
     }
 
     // ============================================================ GAME HISTORY

@@ -80,8 +80,7 @@
     document.getElementById('season').value = season;
 
     // ---- FP+ boom / bust rates (js/fpplus.js): every projected week classified against its position, for the chosen year
-    // (or every year pooled). Wide screens show five columns; narrow ones just all busts / normal / all booms.
-    const narrowMq = matchMedia('(max-width: 1000px)');
+    // (or every year pooled). The table shows the three: all busts / normal / all booms.
     const rateCache = {};
     const rates = yr => rateCache[yr] || (rateCache[yr] = GT.query(`SELECT w.season, w.week, w.player_id AS id, w.points AS pts, w.projected AS proj, v.pos
             FROM player_week_points w JOIN player_values v ON v.season = w.season AND v.player_id = w.player_id
@@ -102,41 +101,82 @@
         { k: 'boom', label: 'Boom', get: m => m.side(1), cls: 'win', tip: 'Share of projected weeks at least 0.5 standard deviations above the position\'s average weekly FP+: every boom tier (Boom, Big, Huge, Smash).' },
         { k: 'smash', label: 'Smash', wide: true, get: m => m.share('smash'), cls: 'win', tip: 'Share of projected weeks more than 3 standard deviations above the position\'s average weekly FP+.' }
     ];
-    function head(narrow) {
-        const rc = RATE_COLS.filter(c => !narrow || !c.wide);
-        const widths = narrow ? ['30%', '7%', '13%', '8%', '10%', '9%', ...rc.map(() => `${23 / rc.length}%`)]
-                              : ['26%', '6%', '12%', '7%', '9%', '8%', ...rc.map(() => `${32 / rc.length}%`)];
-        document.getElementById('find-table').innerHTML = `${SITE.cols(...widths)}<thead><tr><th>Player</th><th>Pos</th><th>Team</th>
-            <th class="num">Games</th><th class="num">Fantasy Pts</th><th class="num">Per Game</th>
-            ${rc.map(c => `<th class="num" data-tip="${esc(`${c.tip} ${FPP.TIP}`)}">${narrow && c.short ? c.short : c.label}</th>`).join('')}</tr></thead><tbody id="rows"></tbody>`;
-        return rc;
+    // bench points: what each player scored in league weeks he sat on a roster outside the starting lineup (bench or IR)
+    const benchCache = {};
+    // (one query: points in a starting slot, points on the bench / IR, and the weeks of each)
+    const bench = yr => benchCache[yr] || (benchCache[yr] = GT.query(`SELECT frp.player_id AS id,
+                SUM(CASE WHEN frp.slot_position IN ('BE', 'IR') THEN frp.actual_points ELSE 0 END) AS pts,
+                SUM(CASE WHEN frp.slot_position IN ('BE', 'IR') THEN 1 ELSE 0 END) AS wk,
+                SUM(CASE WHEN frp.slot_position NOT IN ('BE', 'IR') THEN frp.actual_points ELSE 0 END) AS st,
+                SUM(CASE WHEN frp.slot_position NOT IN ('BE', 'IR') THEN 1 ELSE 0 END) AS stwk
+            FROM fantasy_roster_players frp JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id
+            WHERE frp.actual_points IS NOT NULL AND ($s = 0 OR fr.season = $s) GROUP BY frp.player_id`, { $s: yr === ALL ? 0 : Number(yr) })
+        .then(rows => new Map(rows.map(r => [String(r.id), r]))).catch(() => new Map()));
+    // free agency points: what each player scored in league weeks nobody had him on a roster
+    const faCache = {};
+    const freeAgency = yr => faCache[yr] || (faCache[yr] = GT.query(`SELECT w.player_id AS id, SUM(w.points) AS pts, COUNT(*) AS wk FROM player_week_points w
+            JOIN (SELECT DISTINCT season, week FROM fantasy_rosters) lw ON lw.season = w.season AND lw.week = w.week
+            LEFT JOIN (SELECT DISTINCT fr.season, fr.week, f.player_id FROM fantasy_rosters fr JOIN fantasy_roster_players f ON f.roster_id = fr.roster_id) r
+                ON r.season = w.season AND r.week = w.week AND r.player_id = w.player_id
+            WHERE r.player_id IS NULL AND w.points IS NOT NULL AND ($s = 0 OR w.season = $s) GROUP BY w.player_id`, { $s: yr === ALL ? 0 : Number(yr) })
+        .then(rows => new Map(rows.map(r => [String(r.id), r]))).catch(() => new Map()));
+    // the columns; every header sorts (numbers high first, text A-Z first; click again to flip)
+    const RC = RATE_COLS.filter(c => !c.wide);
+    const COLS = [
+        { k: 'name', label: 'Player', w: '22%', text: true, get: x => x.p.name },
+        { k: 'pos', label: 'Pos', w: '5%', text: true, get: x => x.p.pos },
+        { k: 'team', label: 'Team', w: '10%', text: true, get: x => (teamsOf(x.p) || [x.p.team]).join(', ') },
+        { k: 'g', label: 'Games', w: '6%', get: x => x.t.g },
+        { k: 'st', label: 'Start Pts', w: '9%', get: x => x.b && x.b.stwk ? x.b.st : null, tip: 'Points the player scored in league weeks he was in a starting lineup.' },
+        { k: 'bench', label: 'Bench Pts', w: '9%', get: x => x.b && x.b.wk ? x.b.pts : null, tip: 'Points the player scored in league weeks he was on a roster but not in the starting lineup (bench or IR).' },
+        { k: 'fa', label: 'FA Pts', w: '8%', get: x => x.fa ? x.fa.pts : null, tip: 'Free agency points: what the player scored in league weeks he was not on any roster.' },
+        { k: 'tot', label: 'Total FP', w: '9%', get: x => x.tot, tip: 'Start + Bench + FA points: everything the player scored in league weeks.' },
+        ...RC.map(c => ({ k: c.k, label: c.label, w: '7.33%', rate: c, get: x => x.m && x.m.n ? c.get(x.m) : null, tip: `${c.tip} ${FPP.TIP}` }))
+    ];
+    let sort = { k: 'tot', dir: -1 };
+    function head() {
+        document.getElementById('find-table').innerHTML = `${SITE.cols(...COLS.map(c => c.w))}<thead><tr>${COLS.map(c =>
+            `<th class="sx-sort${c.text ? '' : ' num'}${sort.k === c.k ? (sort.dir === 1 ? ' asc' : ' desc') : ''}" data-k="${c.k}"${c.tip ? ` data-tip="${esc(c.tip)}"` : ''}>${c.label}</th>`).join('')}</tr></thead><tbody id="rows"></tbody>`;
+        document.querySelectorAll('#find-table th.sx-sort').forEach(th => th.addEventListener('click', () => {
+            const c = COLS.find(x => x.k === th.dataset.k);
+            sort = sort.k === c.k ? { k: c.k, dir: -sort.dir } : { k: c.k, dir: c.text ? 1 : -1 };
+            page = 1; render();
+        }));
     }
 
     let drawn = 0;
     async function render() {
         const ticket = ++drawn;
-        const mix = await rates(season);
-        if (ticket !== drawn) return;                     // a newer render started while the rates loaded
-        const rc = head(narrowMq.matches);
+        const [mix, bp, fap] = await Promise.all([rates(season), bench(season), freeAgency(season)]);
+        if (ticket !== drawn) return;                     // a newer render started while the data loaded
+        head();
         const pc = v => v == null ? '-' : `${Math.round(v * 100)}%`;
         const ql = query.trim().toLowerCase();
+        const col = COLS.find(c => c.k === sort.k);
         const list = players
             .filter(p => matches(pos, p.group) && (!ql || p.name.toLowerCase().includes(ql)))
-            .map(p => ({ p, t: totals(p) }))
+            .map(p => { const b = bp.get(String(p.id)), fa = fap.get(String(p.id));
+                return { p, t: totals(p), b, fa, m: mix.get(String(p.id)), tot: (b ? b.st + b.pts : 0) + (fa ? fa.pts : 0) }; })
             .filter(x => x.t.g > 0)
-            .sort((x, y) => y.t.f - x.t.f);
+            .sort((x, y) => { const a = col.get(x), c = col.get(y);
+                if (a == null && c == null) return 0; if (a == null) return 1; if (c == null) return -1;      // blanks always last
+                return (col.text ? String(a).localeCompare(String(c)) : a - c) * sort.dir || y.tot - x.tot; });
         const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
         page = Math.min(Math.max(1, page), pages);
         const start = (page - 1) * PER_PAGE;
-        document.getElementById('rows').innerHTML = list.slice(start, start + PER_PAGE).map(({ p, t }) => {
-            const teams = teamsOf(p) || [p.team];
+        document.getElementById('rows').innerHTML = list.slice(start, start + PER_PAGE).map(x => {
+            const { p, t, b, fa, m, tot } = x, teams = teamsOf(p) || [p.team];
             const logo = `<img src="${PS.nflLogo(season === ALL ? p.team : teams[0])}" alt=""><b>${esc(p.name)}</b>`;
             return `<tr><td>${p.coach ? `<span class="team-cell">${logo}</span>`
                 : `<a class="team-cell" href="${url(`pages/players/stats.html?id=${encodeURIComponent(p.id)}`)}">${logo}</a>`}</td>
-                <td>${esc(p.pos)}</td><td>${esc(teams.join(', '))}</td><td class="num">${t.g}</td><td class="num"><b>${GT.pts(t.f)}</b></td><td class="num">${t.g ? GT.pts(t.f / t.g) : '-'}</td>
-                ${rc.map(c => { const m = mix.get(String(p.id)); const v = m && m.n ? c.get(m) : null;
+                <td>${esc(p.pos)}</td><td>${esc(teams.join(', '))}</td><td class="num">${t.g}</td>
+                <td class="num"${b && b.stwk ? ` data-tip="${b.stwk} starts"` : ''}>${b && b.stwk ? GT.pts(b.st) : '-'}</td>
+                <td class="num"${b && b.wk ? ` data-tip="${b.wk} benched weeks"` : ''}>${b && b.wk ? GT.pts(b.pts) : '-'}</td>
+                <td class="num"${fa ? ` data-tip="${fa.wk} weeks unrostered"` : ''}>${fa ? GT.pts(fa.pts) : '-'}</td>
+                <td class="num"><b>${GT.pts(tot)}</b></td>
+                ${RC.map(c => { const v = m && m.n ? c.get(m) : null;
                     return `<td class="num ${c.cls}"${m && m.n ? ` data-tip="${esc(`${c.label}: ${Math.round((v || 0) * m.n)} of ${m.n} projected weeks${m.unprojected ? ` (${m.unprojected} unprojected left out)` : ''}`)}"` : ''}>${pc(v)}</td>`; }).join('')}</tr>`;
-        }).join('') || `<tr><td colspan="${6 + rc.length}" class="muted">No players found.</td></tr>`;
+        }).join('') || `<tr><td colspan="${COLS.length}" class="muted">No players found.</td></tr>`;
         renderPager(list.length, pages, start);
     }
 
@@ -168,7 +208,6 @@
         document.querySelectorAll('#pos button').forEach(x => x.classList.remove('on'));
         btn.classList.add('on'); pos = btn.dataset.p; page = 1; render();
     }));
-    narrowMq.addEventListener('change', render);        // switch between the five rate columns and three
     updatePositions();
     render();
 })();

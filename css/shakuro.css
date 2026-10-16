@@ -1440,3 +1440,20 @@ img.logo-white{filter:brightness(0) invert(1)}            /* a logo drawn in sol
 .tl-axis span{position:absolute;top:0;border-left:1px solid var(--line-strong);padding-left:4px;height:26px;display:flex;flex-direction:column;line-height:1.15}
 .tl-axis b{font-size:10.5px;font-weight:800}
 .tl-axis small{font-size:9px;color:var(--muted)}
+
+/* Player achievements: the league teams he finished seasons on */
+.lt-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.lt-card{border:1px solid var(--line);border-top:3px solid var(--accent);padding:14px 16px;min-width:0}
+.lt-card.lt-champ{border-top-color:var(--gold)}
+.lt-card.lt-gulag{border-top-color:var(--muted)}
+.lt-card.lt-chump{border-top-color:var(--loss)}
+.lt-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.lt-top b{font-family:var(--display);font-weight:800;font-size:40px;line-height:1}
+.lt-top span{font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;flex-direction:column}
+.lt-top small{font-size:10.5px;font-weight:500;letter-spacing:0;text-transform:none;margin-top:2px}
+.lt-list{display:flex;flex-wrap:wrap;gap:6px}
+.lt-chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 8px;border:1px solid var(--line);font-size:11px;font-weight:700;color:var(--ink)}
+.lt-chip:hover{border-color:var(--ink)}
+.lt-chip img{width:16px;height:16px;object-fit:contain}
+@media (max-width:1000px){ .lt-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:600px){ .lt-grid{grid-template-columns:1fr} }
