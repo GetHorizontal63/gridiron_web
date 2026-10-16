@@ -79,15 +79,17 @@
                         ${kv('Preseason games', rows.length - real.length)}</ul>
                     </div><a class="card-link" href="${url(`pages/players/achievements.html?id=${id}`)}">Achievements</a></div>
             </div>
-            <section class="an-section" id="analytics"></section>
-            <section class="an-section" id="field"></section>
-            <div class="panel" id="seasons" style="margin-top:44px"><div class="panel-head"><h3 class="panel-title">Season by Season</h3><span class="muted">Regular season + playoffs</span></div>
+            <div class="panel" id="timeline" style="margin-top:44px"></div>
+            <div class="panel" id="seasons"><div class="panel-head"><h3 class="panel-title">Season by Season</h3><span class="muted">Regular season + playoffs</span></div>
                 <div class="table-scroll"><table class="data-table" style="min-width:760px">${SITE.cols('8%', '13%', '6%', ...cols.map(() => (52 / cols.length).toFixed(2) + '%'), '11%', '10%')}<thead><tr><th>Season</th><th>Team</th><th class="num">G</th>
                     ${cols.map(([h]) => `<th class="num">${h}</th>`).join('')}<th class="num">Fantasy Pts</th><th class="num">Per Game</th></tr></thead><tbody>
                 ${bySeason.map(x => `<tr><td><b>${x.s}</b></td><td>${esc(x.teams)}</td><td class="num">${x.list.length}</td>
                     ${cols.map(([, k]) => `<td class="num">${Math.round(x.tot[k] * 10) / 10}</td>`).join('')}
                     <td class="num"><b>${GT.pts(x.fp)}</b></td><td class="num">${GT.pts(x.fp / (x.list.length || 1))}</td></tr>`).join('')}
-                </tbody></table></div></div></div>`;
+                </tbody></table></div></div>
+            <section class="an-section" id="analytics"></section>
+            <section class="an-section" id="field"></section>
+            </div>`;
     }
 
     // ============================================================ VS THE FIELD (Statcast-style percentiles, PFF-style grades)
@@ -127,6 +129,82 @@
     };
     BY_GROUP.TE = BY_GROUP.WR;
 
+    // ============================================================ MANAGER TIMELINE
+    // Every league week since 2019 (league week 1 = 2019 W1, counting on through every season), one segment each:
+    // the color of the manager who had the player on his roster that week (bench and IR count), light grey when nobody
+    // did. A manager's color is the main color in his logo, ignoring white, black and greys.
+    const logoColor = (() => {
+        const cache = {};
+        return name => cache[name] || (cache[name] = new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    const s = 48, c = document.createElement('canvas'); c.width = c.height = s;
+                    const g = c.getContext('2d'); g.drawImage(img, 0, 0, s, s);
+                    const d = g.getImageData(0, 0, s, s).data, bins = {};
+                    for (let i = 0; i < d.length; i += 4) {
+                        const [r, gg, b, a] = [d[i], d[i + 1], d[i + 2], d[i + 3]];
+                        if (a < 200) continue;
+                        const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+                        if (mx < 40 || mn > 215 || mx - mn < 30) continue;        // black, white, grey
+                        const k = `${r >> 5}|${gg >> 5}|${b >> 5}`, e = bins[k] || (bins[k] = { n: 0, r: 0, g: 0, b: 0 });
+                        e.n++; e.r += r; e.g += gg; e.b += b;
+                    }
+                    const top = Object.values(bins).sort((x, y) => y.n - x.n)[0];
+                    resolve(top ? `rgb(${Math.round(top.r / top.n)},${Math.round(top.g / top.n)},${Math.round(top.b / top.n)})` : '#555');
+                } catch (_) { resolve('#555'); }
+            };
+            img.onerror = () => resolve('#555');
+            img.src = GT.logo(name);
+        }));
+    })();
+    async function renderTimeline() {
+        const el = document.getElementById('timeline'); if (!el) return;
+        const [weeks, held] = await Promise.all([
+            GT.query(`SELECT season, MIN(league_week) - MIN(week) AS off FROM matchups GROUP BY season`),
+            GT.query(`SELECT fr.season, fr.week, o.display_name AS mgr FROM fantasy_roster_players frp JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id
+                      JOIN owners o ON o.owner_id = fr.owner_id WHERE frp.player_id = $id`, { $id: Number(id) })
+        ]);
+        const off = Object.fromEntries(weeks.map(w => [w.season, w.off]));
+        const [last] = await GT.query(`SELECT season, MAX(week) AS w FROM fantasy_rosters GROUP BY season ORDER BY season DESC LIMIT 1`);
+        const lw = (s, w) => (off[s] ?? 0) + w;
+        const total = lw(last.season, last.w);
+        const at = {}; held.forEach(h => { at[lw(h.season, h.week)] = h.mgr; });
+        const mgrs = [...new Set(held.map(h => h.mgr))];
+        const colors = Object.fromEntries(await Promise.all(mgrs.map(async m => [m, await logoColor(m)])));
+        // runs of the same owner, for the logos above the bar
+        const runs = [];
+        for (let w = 1; w <= total; w++) { const m = at[w] || null, r = runs[runs.length - 1]; if (r && r.m === m) r.to = w; else runs.push({ m, from: w, to: w }); }
+        const seasonStarts = Object.entries(off).map(([s, o]) => ({ s, w: o + 1 })).filter(x => x.w <= total);
+        const pct = w => ((w - 1) / total * 100).toFixed(3);
+        const weeksHeld = held.length;
+        el.innerHTML = `<div class="panel-head"><h3 class="panel-title">Manager Timeline</h3><span class="muted">${weeksHeld ? `Rostered ${weeksHeld} of ${total} league weeks` : 'Never rostered in the league'}</span></div>
+            <div class="tl-scroll"><div class="tl-wrap" style="width:${Math.max(100, total / 50 * 100).toFixed(2)}%">
+                <div class="tl-bar">${runs.map(r => `<span style="left:${pct(r.from)}%;width:${((r.to - r.from + 1) / total * 100).toFixed(3)}%;background:${r.m ? colors[r.m] : 'var(--track)'}"
+                    title="${r.m ? esc(r.m) : 'Unrostered'} · league weeks ${r.from}-${r.to}"></span>`).join('')}
+                    ${runs.filter(r => r.m).map(r => `<img class="tl-logo" data-from="${r.from}" data-to="${r.to}" src="${GT.logo(r.m)}" alt="" title="${esc(r.m)}">`).join('')}</div>
+                <div class="tl-axis">${seasonStarts.map(x => `<span style="left:${pct(x.w)}%"><b>${x.s}</b><small>W${x.w}</small></span>`).join('')}</div>
+            </div></div>`;
+        // each logo sits in the middle of the visible part of its stretch, sliding to the stretch's edge as it scrolls away
+        const sc = el.querySelector('.tl-scroll'), wrap = el.querySelector('.tl-wrap'), logos = [...el.querySelectorAll('.tl-logo')];
+        const place = () => {
+            const W = wrap.offsetWidth, wk = W / total, L = sc.scrollLeft, R = L + sc.clientWidth, size = 34, pad = 4;
+            logos.forEach(img => {
+                const a = (img.dataset.from - 1) * wk, b = img.dataset.to * wk;
+                if (b - a < size + pad * 2) { img.style.left = `${(a + b) / 2 - size / 2}px`; img.hidden = b - a < size * 0.6; return; }
+                img.hidden = false;
+                const lo = Math.max(a, L), hi = Math.min(b, R);
+                const mid = hi > lo ? (lo + hi) / 2 : (b <= L ? b : a);
+                img.style.left = `${Math.min(b - size - pad, Math.max(a + pad, mid - size / 2))}px`;
+            });
+        };
+        sc.scrollLeft = sc.scrollWidth;
+        sc.addEventListener('scroll', place, { passive: true });
+        window.addEventListener('resize', place);
+        place();
+    }
+
+    // (the timeline opens scrolled to the most recent weeks)
     async function renderAnalytics() {
         const host = document.getElementById('analytics');
         if (!host) return;
@@ -474,5 +552,5 @@
     }
 
     const drawn = ({ stats, highlights, achievements, 'game-history': gameHistory })[page]();
-    if (page === 'stats') Promise.resolve(drawn).then(() => { renderAnalytics(); renderField(); });   // after the page (and its #analytics slot) exists
+    if (page === 'stats') Promise.resolve(drawn).then(() => { renderTimeline(); renderAnalytics(); renderField(); });   // after the page (and its #analytics slot) exists
 })();

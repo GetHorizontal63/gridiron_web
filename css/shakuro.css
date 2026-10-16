@@ -1426,3 +1426,17 @@ a.rv-card[href]:hover{border-color:var(--accent)}
 .homer{gap:12px;text-shadow:0 0 3px rgba(0,0,0,.4)}
 .homer img{width:30px;height:30px;max-width:none;object-fit:contain;flex-shrink:0}
 img.logo-white{filter:brightness(0) invert(1)}            /* a logo drawn in solid white on its own team color */
+
+/* Player profile: manager timeline (league week 1 onward); 50 weeks fill the view, the logos ride inside the bar */
+.tl-scroll{overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--accent) transparent}
+.tl-scroll::-webkit-scrollbar{height:6px}
+.tl-scroll::-webkit-scrollbar-track{background:transparent}
+.tl-scroll::-webkit-scrollbar-thumb{background:var(--accent)}
+.tl-wrap{position:relative;min-width:100%;padding:0 0 30px}
+.tl-bar{position:relative;height:55px;background:var(--track)}
+.tl-bar span{position:absolute;top:0;bottom:0}
+.tl-logo{position:absolute;top:50%;width:34px;height:34px;object-fit:contain;transform:translateY(-50%);filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));pointer-events:none}
+.tl-axis{position:absolute;left:0;right:0;bottom:0;height:26px}
+.tl-axis span{position:absolute;top:0;border-left:1px solid var(--line-strong);padding-left:4px;height:26px;display:flex;flex-direction:column;line-height:1.15}
+.tl-axis b{font-size:10.5px;font-weight:800}
+.tl-axis small{font-size:9px;color:var(--muted)}
