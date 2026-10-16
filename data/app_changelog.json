@@ -2,6 +2,19 @@
   "_about": "What changed in each Android app version; shown on pages/app.html. update_and_push.py --release --notes adds new entries.",
   "releases": [
     {
+      "version": "2.0.0",
+      "notes": [
+        "Rebuilt to match the website: photo headers, the site's Featured Games hero and stat tiles",
+        "New Game Center: scoreboard, team rosters slot by slot, top performers with real NFL stat lines, roster analysis",
+        "Stats: playoff odds, schedule luck with the swap grid, lineups with lineup regret, projections",
+        "Managers: career profiles with Draft and Rivals tabs, HOMER bands and logo watermarks",
+        "Historic League Moments, Draft Grades with a true draft board, Trades and Free Agency",
+        "Past Seasons with a photo for every NFL season",
+        "One app bar on every screen",
+        "use your phone's back gesture"
+      ]
+    },
+    {
       "version": "1.3.0",
       "notes": [
         "Tells you when a new version is out, with a one-tap link to download it",
