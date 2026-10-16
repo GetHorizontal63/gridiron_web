@@ -56,6 +56,28 @@
         FROM fantasy_rosters fr JOIN fantasy_roster_players f ON f.roster_id = fr.roster_id
         WHERE f.pro_team IS NOT NULL AND f.pro_team != 'TEAM0' GROUP BY fr.season, f.player_id`;
 
+    // All-Pro teams for a season: three full lineups in the league's format, filled with the players who scored the most
+    // STARTED points that season (bench and free-agent points don't count). Team 1 takes the best at every slot, FLEX
+    // from the best remaining RB / WR / TE; Team 2 and Team 3 pick up from what is left. -> [{ team, slots: [{ slot, p }] }]
+    const allProCache = {};
+    const allPro = season => allProCache[season] || (allProCache[season] = Promise.all([
+        q(`SELECT frp.player_id AS pid, p.name, p.position AS pos, COALESCE(st.team, p.pro_team) AS team, SUM(frp.actual_points) AS pts, COUNT(*) AS starts,
+                  GROUP_CONCAT(DISTINCT o.display_name) AS mgrs
+           FROM fantasy_roster_players frp JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id JOIN players p ON p.player_id = frp.player_id
+           JOIN owners o ON o.owner_id = fr.owner_id LEFT JOIN (${SEASON_TEAM}) st ON st.season = fr.season AND st.pid = p.player_id
+           WHERE fr.season = $s AND frp.slot_position NOT IN ('BE', 'IR') AND frp.actual_points IS NOT NULL GROUP BY frp.player_id`, { $s: Number(season) }),
+        q('SELECT * FROM roster_rules WHERE season <= $s ORDER BY season DESC LIMIT 1', { $s: Number(season) })
+    ]).then(([players, [rule]]) => {
+        const r = rule || {}, n = k => Number(r[k]) || 0;
+        const SLOTS = [['QB', n('qb')], ['RB', n('rb')], ['WR', n('wr')], ['TE', n('te')], ['FLEX', n('flex')], ['K', n('k')], ['P', n('p')], ['D/ST', n('dst')], ['HC', n('hc')]];
+        const pool = players.slice().sort((x, y) => y.pts - x.pts), used = new Set(), FLEX = ['RB', 'WR', 'TE'];
+        return [1, 2, 3].map(team => ({ team, slots: SLOTS.flatMap(([slot, count]) => Array.from({ length: count }, () => {
+            const p = pool.find(x => !used.has(x.pid) && (slot === 'FLEX' ? FLEX.includes(x.pos) : x.pos === slot));
+            if (p) used.add(p.pid);
+            return { slot, p: p || null };
+        })) }));
+    }));
+
     // Homers: managers whose most-drafted NFL team (career; a tie counts) is the team they root for. owner id -> { team, n }
     let homersP;
     const homers = () => homersP || (homersP = q(`
@@ -196,5 +218,5 @@
 
     window.GT = { load, logo, teamName, manager, games, result, record, sum, weekDate, fmtDate, fmtTime,
                   periodLabel, pts, draft, roster, latestRosterIds, slotSort, isStarter, standings, divisionCards, managerHref, managerLink, gameHref, query: q, PERIOD,
-                  liveGames, updatedText, fanTeam, teamColor, whiteLogo, homers, SEASON_TEAM };
+                  liveGames, updatedText, fanTeam, teamColor, whiteLogo, homers, SEASON_TEAM, allPro };
 })();

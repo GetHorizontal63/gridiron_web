@@ -1457,3 +1457,54 @@ img.logo-white{filter:brightness(0) invert(1)}            /* a logo drawn in sol
 .lt-chip img{width:16px;height:16px;object-fit:contain}
 @media (max-width:1000px){ .lt-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:600px){ .lt-grid{grid-template-columns:1fr} }
+
+/* Past Seasons: All-Pro Teams */
+.ap-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px}
+.ap-team{margin-top:0;padding:0;border-top:3px solid var(--accent)}
+.ap-team.ap-t1{border-top-color:var(--gold)}
+.ap-team.ap-t2{border-top-color:#9aa3ad}
+.ap-team.ap-t3{border-top-color:#b87333}
+.ap-head{display:flex;align-items:baseline;justify-content:space-between;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.ap-head span{font-family:var(--display);font-weight:800;font-size:26px;text-transform:uppercase}
+.ap-head b{font-family:var(--display);font-weight:800;font-size:22px;color:var(--muted)}
+.ap-row{display:grid;grid-template-columns:44px 40px minmax(0,1fr) 56px;gap:10px;align-items:center;height:62px;padding:0 16px;border-top:1px solid var(--hair);color:var(--ink)}
+.ap-head + .ap-row{border-top:0}
+a.ap-row:hover{background:var(--hover)}
+.ap-slot{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--muted)}
+.ap-shot{width:40px;height:40px;border-radius:50%;overflow:hidden;background:var(--track)}
+.ap-shot img{width:100%;height:100%;object-fit:cover;object-position:top center}
+.ap-who{min-width:0;display:flex;flex-direction:column}
+.ap-who b{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ap-who small,.ap-who em{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:normal}
+.ap-pts{font-family:var(--display);font-weight:800;font-size:20px;text-align:right;font-variant-numeric:tabular-nums}
+/* All-Pro selection chips: one width, stacked year / team + slot / points, a light fill in the team's metal */
+.ap-chips{display:flex;flex-wrap:wrap;gap:10px}
+.ap-chip{width:150px;height:78px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 12px;border:1px solid var(--line);border-left:3px solid var(--line);color:var(--ink)}
+.ap-chip:hover{border-color:var(--ink)}
+.ap-chip .ap-cy{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted)}
+.ap-chip b{font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ap-chip .ap-cp{font-family:var(--display);font-weight:800;font-size:20px;line-height:1;font-variant-numeric:tabular-nums}
+.ap-chip.ap-t1{border-left-color:var(--gold);background:color-mix(in srgb,var(--gold) 12%,var(--surface))}
+.ap-chip.ap-t2{border-left-color:#9aa3ad;background:color-mix(in srgb,#9aa3ad 14%,var(--surface))}
+.ap-chip.ap-t3{border-left-color:#b87333;background:color-mix(in srgb,#b87333 12%,var(--surface))}
+@media (max-width:1100px){ .ap-grid{grid-template-columns:1fr} }
+
+/* Transactions: season picker + Trades / Free Agency switch in the hero */
+.tx-tools{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.tx-seg{display:inline-flex;height:var(--ctl-h);background:var(--surface);border:1px solid var(--line)}
+.tx-seg a{display:flex;align-items:center;padding:0 14px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tx-seg a.on{background:var(--dark);color:#fff}
+.tx-section > .panel:first-child,.tx-section > *:first-child{margin-top:14px}
+
+/* season overview: the gear to the scoring rules, beside the hero title */
+.hero-gear{display:inline-flex;align-items:center;justify-content:center;width:.5em;height:.5em;margin-left:.22em;color:rgba(255,255,255,.75);flex-shrink:0;align-self:center}
+.hero-gear:hover{color:#fff}
+.hero-gear svg{width:100%;height:100%}
+/* Scoring Rules page */
+.sr-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start;margin-top:18px}
+.sr-block{margin-top:0}
+.sr-block .panel-title{margin-bottom:10px}
+.sr-row{display:flex;justify-content:space-between;gap:12px;height:34px;align-items:center;border-top:1px solid var(--hair);font-size:12.5px}
+.sr-row b{font-variant-numeric:tabular-nums;font-weight:800;white-space:nowrap}
+@media (max-width:1100px){ .sr-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:640px){ .sr-grid{grid-template-columns:1fr} }

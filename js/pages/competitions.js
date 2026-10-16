@@ -136,6 +136,11 @@
                     tools: `<label class="hero-season"><span>Season</span>${seasonSelect()}</label>`,
                     meta: [`Grass Touchers FFL · ${picture.standings.length} managers`, `Latest: ${GT.periodLabel(first ? first.period : 'Regular', lastWeek || 0)}`,
                            champs.find(c => c.s === season) ? `Champion: ${esc(champs.find(c => c.s === season).name)}` : 'Champion: to be decided'] });
+        // a gear beside the title: the season's scoring rules
+        const h1 = document.querySelector('#hero .hero-title');
+        if (h1) h1.insertAdjacentHTML('beforeend', `<a class="hero-gear" href="${url(`pages/past-seasons/scoring.html?season=${season}`)}" title="${season} scoring rules" aria-label="Scoring rules">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>`);
         const d = feature ? GT.weekDate(b, season, feature.week) : null;
         content.innerHTML = `<div class="wrap page-pad">
             <div class="card-row">

@@ -5,10 +5,25 @@
    (net started points per week so far, ranked against completed seasons' per-week rates), drawn with a dashed ring. */
 (async function () {
     const { esc, url, param } = SITE;
-    const page = document.body.dataset.page;                       // 'trades' | 'free-agency'
-    const TRADES = page === 'trades';
+    // one Transactions page with a Trades / Free Agency switch (?view=); the old trades / free-agency pages open it
+    const page = document.body.dataset.page;
+    if (page !== 'transactions') {
+        const u = new URL(location.href); u.pathname = u.pathname.replace(/[^/]+\.html$/, 'transactions.html');
+        if (page === 'free-agency') u.searchParams.set('view', 'free-agency');
+        location.replace(u); return;
+    }
     const content = document.getElementById('content');
     const b = await GT.load();
+    // Transactions = the trades section, then the free agency section, on one page (each runs in its own container)
+    content.innerHTML = `<div class="wrap page-pad tx-head" style="margin-top:34px"><div class="eyebrow">Transactions</div><h2 class="section-title">Trades</h2></div>
+        <div id="tx-trades"></div>
+        <div class="wrap tx-head" style="margin-top:64px"><div class="eyebrow">Transactions</div><h2 class="section-title">Free Agency</h2></div>
+        <div id="tx-fa"></div>`;
+    await section(true, document.getElementById('tx-trades'));
+    await section(false, document.getElementById('tx-fa'));
+
+    async function section(TRADES, root) {
+    const byId = id => root.querySelector('#' + id);
     const KINDS = TRADES ? "('TRADE')" : "('PICKUP','DROP')";
     const name = id => (b.byId[id] || {}).name || '—';
 
@@ -55,8 +70,8 @@
     const season = raw === 'all' ? 'all' : seasons.includes(Number(raw)) ? Number(raw) : seasons.includes(b.season) ? b.season : seasons[0];
     const ALL = season === 'all';
     const scope = moves.filter(m => ALL || m.season === season);
-    const LABEL = TRADES ? 'Trades' : 'Free Agency';
-    SITE.subHeader({
+    const LABEL = 'Transactions';
+    if (TRADES) SITE.subHeader({
         crumbs: [['Past Seasons', url('pages/past-seasons/index.html')], [`${ALL ? 'All seasons' : season} ${LABEL}`]],
         tabs: SITE.sectionTabs('competitions', page).filter(t => !t.href.endsWith('index.html'))
             .map(t => ({ ...t, href: `${t.href}?season=${ALL ? b.season : season}` }))
@@ -90,7 +105,7 @@
     const readColors = () => Object.assign(C, { accent: SITE.color('accent'), red: SITE.color('danger'), ink: SITE.color('ink'), muted: SITE.color('muted'),
                                                  grid: SITE.color('track'), line: SITE.color('line-strong'), surface: SITE.color('surface') });
     function mount(id, option, onClick) {
-        const el = document.getElementById(id);
+        const el = byId(id);
         if (!el) return null;
         const chart = echarts.init(el, null, { renderer: 'canvas' });
         chart.setOption({ textStyle: { fontFamily: 'Inter, sans-serif' }, animationDuration: 400, ...option });
@@ -106,7 +121,7 @@
         ${managerIds.map(id => `<option value="${id}"${id === focus ? ' selected' : ''}>${esc(name(id))}</option>`).join('')}</select></label>`;
     function setFocus(id) {
         focus = id && b.byId[id] ? Number(id) : null;
-        const sel = document.getElementById('mv-focus'); if (sel) sel.value = focus || '';
+        const sel = byId('mv-focus'); if (sel) sel.value = focus || '';
         const u = new URL(location.href); if (focus) u.searchParams.set('m', focus); else u.searchParams.delete('m'); history.replaceState(null, '', u);
         render();
     }
@@ -135,11 +150,11 @@
         }).sort((x, y) => y.season - x.season || (y.week || 0) - (x.week || 0));
         const seasonsIn = [...new Set(scope.map(m => m.season))];
 
-        SITE.hero({ title: `${ALL ? 'All-Time' : season} Trades`, size: 'short', dots: false, image: 'background-12.png', tools: heroTools,
+        SITE.hero({ title: `${ALL ? 'All-Time' : season} Transactions`, size: 'short', dots: false, image: 'background-12.png', tools: heroTools,
                     meta: [`${trades.length} trade${trades.length === 1 ? '' : 's'}${ALL ? ` · ${seasonsIn.length} seasons` : ''} · ${scope.reduce((t, m) => t + m.ins.length, 0)} players moved`,
                            inProgress ? 'Season in progress: dashed grades are provisional (pace so far)' : 'Graded on what each side went on to score in starting lineups'] });
         bindHero();
-        content.innerHTML = `<div class="wrap page-pad">
+        root.innerHTML = `<div class="wrap tx-section">
             <div class="db-slicers">${focusSelect}<button class="sx-reset" id="mv-clear">Clear focus</button>
                 <span class="db-note">${trades.length} trades · grades rank net started points vs every completed-season trade</span></div>
             <div class="db-kpis" id="mv-kpis"></div>
@@ -160,8 +175,8 @@
                 <div class="panel sx-panel" id="mv-table"></div></section>
             <p class="an-note">How trades are found and graded: python/transaction_grades.py reads the weekly roster snapshots (ESPN's trade log misses some trades),
             measures every player's points from the week he joined the new roster to the end of the regular season, and swaps players back for the what-if record.</p></div>`;
-        document.getElementById('mv-focus').addEventListener('change', e => setFocus(e.target.value || null));
-        document.getElementById('mv-clear').addEventListener('click', () => setFocus(null));
+        byId('mv-focus').addEventListener('change', e => setFocus(e.target.value || null));
+        byId('mv-clear').addEventListener('click', () => setFocus(null));
 
         const cols = [
             EX.col('season', 'Season', 6, false), EX.col('week', 'Wk', 5, true),
@@ -172,8 +187,8 @@
             EX.col('winsAdded', 'Wins', 6, true, r => r.winsAdded == null ? '-' : r.winsAdded > 0 ? `+${r.winsAdded}` : String(r.winsAdded)),
             EX.col('gpa', 'Grade', 6, true, r => ringOf(r, true), r => r.grade || '')
         ];
-        const table = EX.table(document.getElementById('mv-table'), { cols, rows: [], sort: ['netSt', -1], minWidth: 980 });
-        document.getElementById('mv-csv').addEventListener('click', () => table.csv(`grass-touchers-trades-${season}`));
+        const table = EX.table(byId('mv-table'), { cols, rows: [], sort: ['netSt', -1], minWidth: 980 });
+        byId('mv-csv').addEventListener('click', () => table.csv(`grass-touchers-trades-${season}`));
 
         return function render() {
             readColors();
@@ -214,14 +229,14 @@
                      + kpi('Avg margin', trades.length ? GT.pts(trades.reduce((t, x) => t + x.margin, 0) / trades.length) : '-', 'started-point gap between sides')
                      + kpi('Record changers', swings, 'trade sides that added a win');
             }
-            document.getElementById('mv-kpis').innerHTML = html;
+            byId('mv-kpis').innerHTML = html;
 
             // profile
-            const tile = document.getElementById('mv-profile-tile');
+            const tile = byId('mv-profile-tile');
             tile.hidden = !focus || !lines.find(l => l.id === focus);
             if (!tile.hidden) {
-                document.getElementById('mv-profile-title').textContent = `${name(focus)} · Trade Profile`;
-                document.getElementById('mv-profile').innerHTML = profile(lines, [
+                byId('mv-profile-title').textContent = `${name(focus)} · Trade Profile`;
+                byId('mv-profile').innerHTML = profile(lines, [
                     ['Trades made', 'n', v => v], ['Net started points', 'net', sgn], ['Net per trade', 'avg', sgn],
                     ['Trades won', 'winRate', pctTxt], ['Wins added', 'wins', v => v > 0 ? `+${v}` : String(v)], ['Grade point average', 'gpa', v => v == null ? '-' : v.toFixed(2)]]);
             }
@@ -279,7 +294,7 @@
                     ${'<li></li>'.repeat(Math.max(0, rows - m.ins.length))}</ul>
                 <div class="tr-foot"><span>Net started <b class="${m.netSt >= 0 ? 'win' : 'loss'}">${sgn(m.netSt)}</b></span>
                     <span>${m.rw != null && m.aw != null ? `Record <b>${m.rw}-${m.rl}</b> · without <b>${m.aw}-${m.al}</b>` : '&nbsp;'}</span></div></div>`;
-            document.getElementById('mv-cards').innerHTML = shown.map(t => {
+            byId('mv-cards').innerHTML = shown.map(t => {
                 const rows = Math.max(t.a.ins.length, t.c ? t.c.ins.length : 0, 1);
                 const even = !t.c || Math.abs((t.a.netSt || 0) - (t.c.netSt || 0)) < 5;
                 return `<article class="tr-card"><div class="tr-head"><span class="pill pill-dark">${t.season} · Wk ${t.week || '-'}</span>
@@ -298,12 +313,8 @@
         const POS = ['QB', 'RB', 'WR', 'TE', 'K', 'P', 'D/ST', 'HC'];
         const mainPos = m => (m.kind === 'DROP' ? m.outs[0] : m.ins[0] || m.outs[0] || {}).pos || '';
         const adds = scope.filter(m => m.kind === 'PICKUP');
-        SITE.hero({ title: `${ALL ? 'All-Time' : season} Free Agency`, size: 'short', dots: false, image: 'background-11.png', tools: heroTools,
-                    meta: [`${adds.filter(m => m.type === 'Waiver claim').length} waiver claims · ${adds.filter(m => m.type === 'Free agent').length} free-agent adds · ${scope.filter(m => m.kind === 'DROP').length} drops`,
-                           inProgress ? 'Season in progress: dashed grades are provisional (pace so far)' : 'Graded on what the added players scored in the lineup, minus what was cut'] });
-        bindHero();
         const opt = (v, label, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
-        content.innerHTML = `<div class="wrap page-pad">
+        root.innerHTML = `<div class="wrap tx-section">
             <div class="db-slicers">${focusSelect}
                 <label class="sx-f"><span>Move</span><select class="select" id="fa-type">${opt('', 'All moves', f.type)}${opt('Waiver claim', 'Waiver claims', f.type)}${opt('Free agent', 'Free-agent adds', f.type)}${opt('Drop', 'Drops only', f.type)}</select></label>
                 <label class="sx-f"><span>Position</span><select class="select" id="fa-pos">${opt('', 'All', f.pos)}${POS.map(p => opt(p, p, f.pos)).join('')}</select></label>
@@ -327,14 +338,14 @@
                 <div class="panel sx-panel" id="mv-table"></div>
                 <div class="mv-key"><span>${EX.ring('A', { small: true })} Final grade</span><span>${EX.ring('B', { small: true, prov: true })} Provisional (season in progress)</span>
                     <span>Pickup net = added players' points − the player dropped for them · Drop net = −(what the cut player scored next)</span></div></section></div>`;
-        document.getElementById('mv-focus').addEventListener('change', e => setFocus(e.target.value || null));
-        document.getElementById('mv-clear').addEventListener('click', () => { f.type = f.pos = f.q = ''; ['fa-type', 'fa-pos', 'fa-q'].forEach(id => { document.getElementById(id).value = ''; }); setFocus(null); });
-        document.getElementById('fa-type').addEventListener('change', e => { f.type = e.target.value; render(); });
-        document.getElementById('fa-pos').addEventListener('change', e => { f.pos = e.target.value; render(); });
+        byId('mv-focus').addEventListener('change', e => setFocus(e.target.value || null));
+        byId('mv-clear').addEventListener('click', () => { f.type = f.pos = f.q = ''; ['fa-type', 'fa-pos', 'fa-q'].forEach(id => { byId(id).value = ''; }); setFocus(null); });
+        byId('fa-type').addEventListener('change', e => { f.type = e.target.value; render(); });
+        byId('fa-pos').addEventListener('change', e => { f.pos = e.target.value; render(); });
         let timer;
-        document.getElementById('fa-q').addEventListener('input', e => { clearTimeout(timer); timer = setTimeout(() => { f.q = e.target.value.trim().toLowerCase(); render(); }, 200); });
+        byId('fa-q').addEventListener('input', e => { clearTimeout(timer); timer = setTimeout(() => { f.q = e.target.value.trim().toLowerCase(); render(); }, 200); });
 
-        const mgrTable = EX.table(document.getElementById('fa-mgr'), { minWidth: 980, perPage: 20, sort: ['net', -1], cols: [
+        const mgrTable = EX.table(byId('fa-mgr'), { minWidth: 980, perPage: 20, sort: ['net', -1], cols: [
             EX.col('name', 'Manager', 14, false, r => `<span class="team-cell"><img src="${GT.logo(r.name)}" alt=""><b>${esc(r.name)}</b></span>`),
             EX.col('adds', 'Adds', 6, true), EX.col('waiver', 'Waivers', 7, true), EX.col('fa', 'FA', 6, true), EX.col('drops', 'Drops', 6, true),
             EX.col('stIn', 'Pts started', 9, true, r => f1(r.stIn)), EX.col('net', 'Net started', 9, true, r => `<b class="${r.net >= 0 ? 'win' : 'loss'}">${sgn(r.net)}</b>`),
@@ -350,8 +361,8 @@
             EX.col('netSt', 'Net', 7, true, r => `<b class="${r.netSt >= 0 ? 'win' : 'loss'}">${sgn(r.netSt)}</b>`),
             EX.col('elapsed', 'Wks', 6, true, r => r.elapsed ?? '-'), EX.col('gpa', 'Grade', 7, true, r => ringOf(r, true), r => r.grade || '')
         ];
-        const table = EX.table(document.getElementById('mv-table'), { cols, rows: [], sort: ['netSt', -1], minWidth: 1000 });
-        document.getElementById('mv-csv').addEventListener('click', () => table.csv(`grass-touchers-free-agency-${season}`));
+        const table = EX.table(byId('mv-table'), { cols, rows: [], sort: ['netSt', -1], minWidth: 1000 });
+        byId('mv-csv').addEventListener('click', () => table.csv(`grass-touchers-free-agency-${season}`));
 
         return function render() {
             readColors();
@@ -360,7 +371,7 @@
                 && (!f.q || [...m.ins, ...m.outs].some(p => String(p.name).toLowerCase().includes(f.q)));
             const pool = scope.filter(match);                   // the league, filtered (for comparisons)
             const list = pool.filter(m => !focus || m.oid === focus);
-            document.getElementById('fa-note').textContent = `${list.length.toLocaleString()} moves`;
+            byId('fa-note').textContent = `${list.length.toLocaleString()} moves`;
 
             const per = {};
             pool.forEach(m => {
@@ -393,13 +404,13 @@
                      + kpi('Busiest', busiest ? esc(busiest.name) : '-', busiest ? `${busiest.moves} moves` : '')
                      + kpi('Best wire work', top ? esc(top.name) : '-', top ? `${sgn(top.net)} net started` : '');
             }
-            document.getElementById('mv-kpis').innerHTML = html;
+            byId('mv-kpis').innerHTML = html;
 
-            const tile = document.getElementById('mv-profile-tile');
+            const tile = byId('mv-profile-tile');
             tile.hidden = !focus || !lines.find(l => l.id === focus);
             if (!tile.hidden) {
-                document.getElementById('mv-profile-title').textContent = `${name(focus)} · Waiver Profile`;
-                document.getElementById('mv-profile').innerHTML = profile(lines, [
+                byId('mv-profile-title').textContent = `${name(focus)} · Waiver Profile`;
+                byId('mv-profile').innerHTML = profile(lines, [
                     ['Pickups made', 'adds', v => v], ['Points started from pickups', 'stIn', f1], ['Net started points', 'net', sgn],
                     ['Net per pickup', 'perAdd', sgn], ['A/B hit rate', 'hit', pctTxt], ['Grade point average', 'gpa', v => v == null ? '-' : v.toFixed(2)]]);
             }
@@ -439,14 +450,15 @@
             // lists
             const li = (img, title, sub, val, ring) => `<li><img src="${img}" alt=""><div class="who"><b>${title}</b><small>${sub}</small></div><span class="n">${val}</span>${ring}</li>`;
             const best = pick.slice().sort((x, y) => (y.netSt || 0) - (x.netSt || 0)).slice(0, 8);
-            document.getElementById('fa-best').innerHTML = best.map(m => li(GT.logo(m.mgr), m.ins.map(player).join(', ') || '-',
+            byId('fa-best').innerHTML = best.map(m => li(GT.logo(m.mgr), m.ins.map(player).join(', ') || '-',
                 `${esc(m.mgr)} · ${esc(m.type)} · ${when(m)}${m.outs.length ? ` · for ${esc(names(m.outs))}` : ''}`, sgn(m.netSt), ringOf(m, true))).join('') || '<li class="empty">No pickups match.</li>';
             const cuts = list.flatMap(m => m.outs.map(p => ({ m, p }))).filter(x => (x.p.ros || 0) > 0).sort((x, y) => (y.p.ros || 0) - (x.p.ros || 0)).slice(0, 8);
-            document.getElementById('fa-cuts').innerHTML = cuts.map(({ m, p }) => li(GT.logo(m.mgr), player(p),
+            byId('fa-cuts').innerHTML = cuts.map(({ m, p }) => li(GT.logo(m.mgr), player(p),
                 `${esc(m.mgr)} · cut ${when(m)}${m.ins.length ? ` · for ${esc(names(m.ins))}` : ''}`, f1(p.ros), ringOf(m, true))).join('') || '<li class="empty">No costly cuts.</li>';
 
             mgrTable.set(lines);
             table.set(list.map(m => ({ ...m, added: names(m.ins), dropped: names(m.outs) })));
         };
+    }
     }
 })();

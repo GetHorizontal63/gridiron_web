@@ -509,7 +509,8 @@
         const el = document.getElementById('league-teams'); if (!el) return;
         const [teams, places, post] = await Promise.all([
             // a team counts when he was on its roster for at least 75% of the regular season AND every postseason week
-            GT.query(`WITH wk AS (SELECT season, week, MAX(CASE WHEN season_period = 'Regular' THEN 0 ELSE 1 END) AS post FROM matchups GROUP BY season, week),
+            GT.query(`WITH wk AS (SELECT m.season, m.week, MAX(CASE WHEN m.season_period = 'Regular' THEN 0 ELSE 1 END) AS post FROM matchups m
+                                    WHERE EXISTS (SELECT 1 FROM fantasy_rosters r WHERE r.season = m.season AND r.week = m.week) GROUP BY m.season, m.week),   -- weeks with saved rosters
                            tot AS (SELECT season, SUM(post = 0) AS reg, SUM(post = 1) AS post FROM wk GROUP BY season),
                            mine AS (SELECT fr.season, fr.owner_id AS id, SUM(wk.post = 0) AS reg, SUM(wk.post = 1) AS post
                                     FROM fantasy_roster_players frp JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id
@@ -536,7 +537,17 @@
                        ['gulag', 'Gulag teams', 'Played in the losers bracket'], ['chump', 'Chumpionship teams', 'Finished last']];
         const chips = list => list.length ? list.sort((x, y) => y.season - x.season).map(tm =>
             `<a class="lt-chip" href="${GT.managerHref(tm.mgr, tm.season)}"><img src="${GT.logo(tm.mgr)}" alt="">${tm.season} ${esc(tm.mgr)}</a>`).join('') : '<span class="muted">None</span>';
-        el.innerHTML = `<div class="panel"><div class="panel-head"><h3 class="panel-title">League Teams</h3><span class="muted">On the roster for 75%+ of the regular season and every postseason week</span></div>
+        // All-Pro selections: every season's three All-Pro teams (started points), wherever he made one
+        // finished seasons only (a final placement on file); the season in progress stays on the All-Pro page
+        const years = (await GT.query('SELECT DISTINCT season FROM final_placements ORDER BY season DESC')).map(r => r.season);
+        const NAMES = ['First Team', 'Second Team', 'Third Team'];
+        const picks = [];
+        for (const y of years) (await GT.allPro(y)).forEach((t, i) => t.slots.forEach(s => { if (s.p && String(s.p.pid) === String(id)) picks.push({ y, team: i, slot: s.slot, pts: s.p.pts }); }));
+        const allPro = `<div class="panel"><div class="panel-head"><h3 class="panel-title">All-Pro Selections</h3><span class="muted">${picks.length ? `${picks.length} selection${picks.length === 1 ? '' : 's'}` : 'None yet'}</span></div>
+            ${picks.length ? `<div class="ap-chips">${picks.map(x => `<a class="ap-chip ap-t${x.team + 1}" href="${url(`pages/past-seasons/all-pro.html?season=${x.y}`)}">
+                <span class="ap-cy">${x.y}</span><b>${NAMES[x.team]} ${esc(x.slot)}</b><span class="ap-cp">${Number(x.pts).toFixed(2)}</span></a>`).join('')}</div>`
+                : '<p class="muted">Never made an All-Pro team (the three best lineups of a season by started points).</p>'}</div>`;
+        el.innerHTML = allPro + `<div class="panel"><div class="panel-head"><h3 class="panel-title">League Teams</h3><span class="muted">On the roster for 75%+ of the regular season and every postseason week</span></div>
             <div class="lt-grid">${CARDS.map(([k, label, sub]) => `<div class="lt-card lt-${k}"><div class="lt-top"><b>${groups[k].length}</b><span>${label}<small>${sub}</small></span></div>
                 <div class="lt-list">${chips(groups[k])}</div></div>`).join('')}</div></div>`;
     }

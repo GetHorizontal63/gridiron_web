@@ -46,9 +46,9 @@
             { key: 'standings', label: 'Standings', href: 'pages/past-seasons/standings.html' },
             { key: 'playoff-bracket', label: 'Playoff Bracket', href: 'pages/past-seasons/playoff-bracket.html' },
             { key: 'managers', label: 'Managers', href: 'pages/past-seasons/managers.html' },
-            { key: 'trades', label: 'Trades', href: 'pages/past-seasons/trades.html' },
-            { key: 'free-agency', label: 'Free Agency', href: 'pages/past-seasons/free-agency.html' },
+            { key: 'transactions', label: 'Transactions', href: 'pages/past-seasons/transactions.html' },   // trades + free agency
             { key: 'draft', label: 'Draft Grades', href: 'pages/past-seasons/draft.html' },
+            { key: 'all-pro', label: 'All-Pro Teams', href: 'pages/past-seasons/all-pro.html' },
             { key: 'moments', label: 'Historic League Moments', href: 'pages/past-seasons/moments.html', menuOnly: true }   // cross-season: tab only on All Seasons
         ] }
     ];
