@@ -15,55 +15,50 @@
                 meta: ['League scoring settings', 'Points per stat, by category'] });
     document.getElementById('hero-season').addEventListener('change', e => { const u = new URL(location.href); u.searchParams.set('season', e.target.value); location.href = u; });
 
-    // ESPN stat ids -> [category, label]
-    const S = {
-        3: ['Passing', 'Passing yards'], 4: ['Passing', 'TD pass'], 19: ['Passing', '2-pt passing conversion'], 20: ['Passing', 'Interception thrown'],
-        24: ['Rushing', 'Rushing yards'], 25: ['Rushing', 'TD rush'], 26: ['Rushing', '2-pt rushing conversion'],
-        42: ['Receiving', 'Receiving yards'], 43: ['Receiving', 'TD reception'], 44: ['Receiving', '2-pt receiving conversion'], 53: ['Receiving', 'Each reception'],
-        63: ['Miscellaneous', 'Fumble recovered for TD'], 72: ['Miscellaneous', 'Fumble lost'], 101: ['Miscellaneous', 'Kickoff return TD'], 102: ['Miscellaneous', 'Punt return TD'],
-        74: ['Kicking', 'FG made (50+ yards)'], 77: ['Kicking', 'FG made (40-49 yards)'], 80: ['Kicking', 'FG made (0-39 yards)'], 198: ['Kicking', 'FG made (50-59 yards)'],
-        201: ['Kicking', 'FG made (60+ yards)'], 85: ['Kicking', 'FG missed'], 86: ['Kicking', 'PAT made'], 88: ['Kicking', 'PAT missed'],
-        138: ['Punting', 'Each punt'], 140: ['Punting', 'Punt inside the 10'], 141: ['Punting', 'Punt inside the 20'], 142: ['Punting', 'Punt blocked'], 146: ['Punting', 'Fair catch'],
-        148: ['Punting', 'Punt average 44.0+'], 149: ['Punting', 'Punt average 42.0-43.9'], 150: ['Punting', 'Punt average 40.0-41.9'],
-        89: ['Team Defense / Special Teams', '0 points allowed'], 90: ['Team Defense / Special Teams', '1-6 points allowed'], 91: ['Team Defense / Special Teams', '7-13 points allowed'],
-        92: ['Team Defense / Special Teams', '14-17 points allowed'], 121: ['Team Defense / Special Teams', '18-21 points allowed'], 122: ['Team Defense / Special Teams', '22-27 points allowed'],
-        123: ['Team Defense / Special Teams', '28-34 points allowed'], 124: ['Team Defense / Special Teams', '35-45 points allowed'], 125: ['Team Defense / Special Teams', '46+ points allowed'],
-        128: ['Team Defense / Special Teams', 'Less than 100 yards allowed'], 129: ['Team Defense / Special Teams', '100-199 yards allowed'], 130: ['Team Defense / Special Teams', '200-299 yards allowed'],
-        131: ['Team Defense / Special Teams', '300-349 yards allowed'], 132: ['Team Defense / Special Teams', '350-399 yards allowed'], 133: ['Team Defense / Special Teams', '400-449 yards allowed'],
-        134: ['Team Defense / Special Teams', '450-499 yards allowed'], 135: ['Team Defense / Special Teams', '500-549 yards allowed'], 136: ['Team Defense / Special Teams', '550+ yards allowed'],
-        93: ['Team Defense / Special Teams', 'Blocked punt or FG return for TD'], 95: ['Team Defense / Special Teams', 'Each interception'], 96: ['Team Defense / Special Teams', 'Each fumble recovered'],
-        97: ['Team Defense / Special Teams', 'Blocked punt, PAT or FG'], 98: ['Team Defense / Special Teams', 'Each safety'], 99: ['Team Defense / Special Teams', 'Each sack'],
-        103: ['Team Defense / Special Teams', 'Interception return TD'], 104: ['Team Defense / Special Teams', 'Fumble return TD'], 106: ['Team Defense / Special Teams', 'Each fumble forced'],
-        117: ['Team Defense / Special Teams', 'Every 25 kickoff return yards'], 119: ['Team Defense / Special Teams', 'Every 25 punt return yards'],
-        206: ['Team Defense / Special Teams', '2-pt conversion return'], 209: ['Team Defense / Special Teams', '1-pt safety'],
-        155: ['Head Coach', 'Team win'], 156: ['Head Coach', 'Team loss'],
-        166: ['Head Coach', 'Win by 1-4 points'], 165: ['Head Coach', 'Win by 5-9 points'], 164: ['Head Coach', 'Win by 10-14 points'], 163: ['Head Coach', 'Win by 15-19 points'],
-        162: ['Head Coach', 'Win by 20-24 points'], 161: ['Head Coach', 'Win by 25+ points'],
-        167: ['Head Coach', 'Lose by 1-4 points'], 168: ['Head Coach', 'Lose by 5-9 points'], 169: ['Head Coach', 'Lose by 10-14 points'], 170: ['Head Coach', 'Lose by 15-19 points'],
-        171: ['Head Coach', 'Lose by 20-24 points'], 172: ['Head Coach', 'Lose by 25+ points']
-    };
-    const ORDER = ['Passing', 'Rushing', 'Receiving', 'Miscellaneous', 'Kicking', 'Punting', 'Team Defense / Special Teams', 'Head Coach', 'Other'];
-    const yards = { 3: 'passing', 24: 'rushing', 42: 'receiving' };
-    // the value shown: per-yard items as "1 pt per N yards" (ESPN's way); everything else as points
+    // ESPN stat ids -> [section, column, label], listed in display order (ESPN's)
+    const OFF = 'Offense', KP = 'Kicking & Punting', DST = 'Team Defense / Special Teams', HC = 'Head Coach';
+    const LIST = [
+        [3, OFF, 'Passing', 'Passing yards'], [4, OFF, 'Passing', 'TD pass'], [19, OFF, 'Passing', '2-pt conversion'], [20, OFF, 'Passing', 'Interception thrown'],
+        [24, OFF, 'Rushing', 'Rushing yards'], [25, OFF, 'Rushing', 'TD rush'], [26, OFF, 'Rushing', '2-pt conversion'],
+        [42, OFF, 'Receiving', 'Receiving yards'], [43, OFF, 'Receiving', 'TD reception'], [44, OFF, 'Receiving', '2-pt conversion'], [53, OFF, 'Receiving', 'Each reception'],
+        [63, OFF, 'Miscellaneous', 'Fumble recovered for TD'], [72, OFF, 'Miscellaneous', 'Fumble lost'], [101, OFF, 'Miscellaneous', 'Kickoff return TD'], [102, OFF, 'Miscellaneous', 'Punt return TD'],
+        [80, KP, 'Kicking', 'FG made, 0-39 yds'], [77, KP, 'Kicking', 'FG made, 40-49 yds'], [74, KP, 'Kicking', 'FG made, 50+ yds'], [198, KP, 'Kicking', 'FG made, 50-59 yds'],
+        [201, KP, 'Kicking', 'FG made, 60+ yds'], [85, KP, 'Kicking', 'FG missed'], [86, KP, 'Kicking', 'PAT made'], [88, KP, 'Kicking', 'PAT missed'],
+        [138, KP, 'Punting', 'Each punt'], [140, KP, 'Punting', 'Inside the 10'], [141, KP, 'Punting', 'Inside the 20'], [142, KP, 'Punting', 'Punt blocked'], [146, KP, 'Punting', 'Fair catch'],
+        [148, KP, 'Punt average', '44.0+'], [149, KP, 'Punt average', '42.0-43.9'], [150, KP, 'Punt average', '40.0-41.9'],
+        [89, DST, 'Points allowed', '0'], [90, DST, 'Points allowed', '1-6'], [91, DST, 'Points allowed', '7-13'], [92, DST, 'Points allowed', '14-17'],
+        [121, DST, 'Points allowed', '18-21'], [122, DST, 'Points allowed', '22-27'], [123, DST, 'Points allowed', '28-34'], [124, DST, 'Points allowed', '35-45'], [125, DST, 'Points allowed', '46+'],
+        [128, DST, 'Yards allowed', 'Under 100'], [129, DST, 'Yards allowed', '100-199'], [130, DST, 'Yards allowed', '200-299'], [131, DST, 'Yards allowed', '300-349'],
+        [132, DST, 'Yards allowed', '350-399'], [133, DST, 'Yards allowed', '400-449'], [134, DST, 'Yards allowed', '450-499'], [135, DST, 'Yards allowed', '500-549'], [136, DST, 'Yards allowed', '550+'],
+        [99, DST, 'Defense', 'Sack'], [95, DST, 'Defense', 'Interception'], [96, DST, 'Defense', 'Fumble recovered'], [106, DST, 'Defense', 'Fumble forced'],
+        [97, DST, 'Defense', 'Blocked punt, PAT or FG'], [98, DST, 'Defense', 'Safety'], [209, DST, 'Defense', '1-pt safety'],
+        [103, DST, 'Returns', 'Interception return TD'], [104, DST, 'Returns', 'Fumble return TD'], [93, DST, 'Returns', 'Blocked kick return TD'],
+        [117, DST, 'Returns', 'Every 25 kickoff return yds'], [119, DST, 'Returns', 'Every 25 punt return yds'], [206, DST, 'Returns', '2-pt conversion return'],
+        [155, HC, 'Result', 'Team win'], [156, HC, 'Result', 'Team loss'],
+        [161, HC, 'Wins', 'By 25+'], [162, HC, 'Wins', 'By 20-24'], [163, HC, 'Wins', 'By 15-19'], [164, HC, 'Wins', 'By 10-14'], [165, HC, 'Wins', 'By 5-9'], [166, HC, 'Wins', 'By 1-4'],
+        [167, HC, 'Losses', 'By 1-4'], [168, HC, 'Losses', 'By 5-9'], [169, HC, 'Losses', 'By 10-14'], [170, HC, 'Losses', 'By 15-19'], [171, HC, 'Losses', 'By 20-24'], [172, HC, 'Losses', 'By 25+']
+    ];
+    const S = Object.fromEntries(LIST.map(([id, ...rest], k) => [id, [...rest, k]]));
+    const yards = { 3: 1, 24: 1, 42: 1 };
+    // per-yard items as "1 pt / N yds" (ESPN's way); everything else as points
     const fmt = (id, v) => {
         if (yards[id] && v > 0 && v < 1) return `1 pt / ${Math.round(1 / v)} yds`;
         const n = Number(v.toFixed(2));
         return `${n > 0 ? '+' : ''}${n}`;
     };
-    // row order within a block, the way ESPN lists them (ids not listed sort last)
-    const RANK = [3, 4, 19, 20, 24, 25, 26, 42, 43, 44, 53, 63, 72, 101, 102, 80, 77, 74, 198, 201, 85, 86, 88, 138, 140, 141, 142, 146, 148, 149, 150,
-        89, 90, 91, 92, 121, 122, 123, 124, 125, 128, 129, 130, 131, 132, 133, 134, 135, 136, 99, 95, 96, 106, 97, 98, 93, 103, 104, 117, 119, 206, 209,
-        155, 156, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172];
-    const rank = id => { const i = RANK.indexOf(id); return i < 0 ? 999 + id : i; };
-    const groups = {};
-    (data.seasons[String(season)] || []).slice().sort((x, y) => rank(x.id) - rank(y.id)).forEach(r => {
-        const slotOnly = !r.pts && r.slots && r.slots['16'] != null;
-        const [cat, label] = S[r.id] || [slotOnly ? 'Team Defense / Special Teams' : 'Other', `Stat ${r.id}`];
+    const rows = (data.seasons[String(season)] || []).map(r => {
         const v = r.pts || (r.slots ? Object.values(r.slots)[0] : 0);
-        (groups[cat] = groups[cat] || []).push({ label, v: fmt(r.id, v), neg: v < 0 });
-    });
+        const [sec, col, label, k] = S[r.id] || ['Other', 'Other', `Stat ${r.id}`, 999 + r.id];
+        return { sec, col, label, k, v: fmt(r.id, v), neg: v < 0 };
+    }).sort((x, y) => x.k - y.k);
+    const SECS = [OFF, KP, DST, HC, 'Other'];
+    const block = sec => {
+        const cols = [...new Set(rows.filter(r => r.sec === sec).map(r => r.col))];
+        return `<section class="panel sr-sec"><h3 class="panel-title">${esc(sec)}</h3><div class="sr-cols">${cols.map(c => `<div class="sr-col">
+            <div class="sr-col-head">${esc(c)}</div>${rows.filter(r => r.sec === sec && r.col === c).map(x =>
+                `<div class="sr-row"><span>${esc(x.label)}</span><b class="${x.neg ? 'loss' : ''}">${esc(x.v)}</b></div>`).join('')}</div>`).join('')}</div></section>`;
+    };
     content.innerHTML = `<div class="wrap page-pad">
         <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${season} season</div><h2 class="section-title">Scoring Rules</h2></div></div>
-        <div class="sr-grid">${ORDER.filter(c => groups[c]).map(c => `<div class="panel sr-block"><h3 class="panel-title">${esc(c)}</h3>
-            ${groups[c].map(x => `<div class="sr-row"><span>${esc(x.label)}</span><b class="${x.neg ? 'loss' : ''}">${esc(x.v)}</b></div>`).join('')}</div>`).join('')}</div></div>`;
+        ${SECS.filter(s => rows.some(r => r.sec === s)).map(block).join('')}</div>`;
 })();
