@@ -1510,3 +1510,85 @@ a.ap-row:hover{background:var(--hover)}
 .sr-row b{font-variant-numeric:tabular-nums;font-weight:800;white-space:nowrap}
 @media (max-width:1000px){ .sr-cols{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:560px){ .sr-cols{grid-template-columns:1fr} }
+
+/* Trade Calculator */
+.tc-bar .sx-f .select{width:190px}
+.tc-btns{margin-left:auto;display:flex;align-items:flex-end}
+.tc-btns .btn{height:var(--ctl-h)}
+.tc-cols{display:grid;grid-template-columns:repeat(var(--n,2),minmax(0,1fr));gap:14px;align-items:start}
+.tc-team-panel{margin-top:0;padding:18px 16px}
+.tc-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.tc-head img{width:38px;height:38px;object-fit:contain}
+.tc-head .panel-title{font-size:22px}
+.tc-head small{color:var(--muted);font-size:11px}
+.tc-table th,.tc-table td{height:32px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+.tc-table td.c{text-align:center}
+.tc-row{cursor:pointer}
+.tc-row:hover td{background:var(--hover,rgba(0,0,0,.035))}
+.tc-row.on td{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.tc-box{display:inline-flex;width:15px;height:15px;border:1.5px solid var(--line);align-items:center;justify-content:center;font-size:11px;font-weight:800;line-height:1}
+.tc-row.on .tc-box{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.tc-tag{font-style:normal;font-size:9px;font-weight:800;color:#c0392b;flex:0 0 auto}
+.tc-to{flex:0 0 96px;width:96px;height:22px;font-size:10px;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.tc-pl .pnm{flex:1 1 auto}
+.tc-verdict{margin:14px 0 0}
+.tc-slotchip{display:inline-flex;align-items:center;justify-content:center;width:38px;height:18px;border-radius:2px;color:#fff;font-size:9px;font-weight:800;letter-spacing:.04em;vertical-align:middle}
+.tc-empty td{height:32px}
+.tc-empty td.muted{font-style:italic}
+.tc-v-head{display:flex;justify-content:space-between;align-items:center;gap:30px}
+.tc-v-head small{color:var(--muted);font-size:12px}
+.tc-bars{flex:0 0 420px;display:flex;flex-direction:column;gap:6px}
+.tc-bar-row{display:grid;grid-template-columns:90px 1fr 50px;align-items:center;gap:10px;height:22px;font-size:12px;font-weight:700}
+.tc-bar-row b{text-align:right;font-variant-numeric:tabular-nums}
+.tc-bar-track{position:relative;height:10px;background:var(--track)}
+.tc-bar-track::after{content:'';position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--muted)}
+.tc-bar-track i{position:absolute;top:0;bottom:0}
+.tc-bar-track i.pos{left:50%;background:var(--win,#2e7d4f)}
+.tc-bar-track i.neg{right:50%;background:var(--loss,#c0392b)}
+.tc-cards{display:grid;grid-template-columns:repeat(var(--n,2),minmax(0,1fr));gap:14px;margin-top:20px}
+.tc-card{border-top:3px solid var(--ink);padding-top:12px}
+.tc-card-head{display:flex;align-items:center;gap:10px;height:32px}
+.tc-card-head img{width:28px;height:28px;object-fit:contain}
+.tc-card-head b{font-family:var(--display);font-size:22px;text-transform:uppercase;flex:1}
+.tc-card-head span{font-family:var(--display);font-size:24px;font-weight:800}
+.tc-sub{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px}
+.tc-pl,.tc-chg{display:flex;align-items:center;justify-content:space-between;gap:8px;height:28px;border-bottom:1px solid var(--hair);font-size:12px}
+.tc-pl b,.tc-chg em{font-style:normal;font-weight:800;font-variant-numeric:tabular-nums;flex:0 0 auto}
+.tc-pl.muted{color:var(--muted)}
+.tc-slot{flex:0 0 44px;font-size:10px;font-weight:800;color:var(--muted)}
+.tc-who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tc-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px}
+.tc-stats > div{background:var(--track);padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.tc-stats span{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.tc-stats b{font-size:14px;font-variant-numeric:tabular-nums}
+.tc-stats em{font-style:normal;font-weight:800;font-size:12px}
+@media (max-width:1100px){ .tc-cols,.tc-cards{grid-template-columns:repeat(2,minmax(0,1fr))} .tc-v-head{flex-direction:column;align-items:stretch} .tc-bars{flex-basis:auto} }
+@media (max-width:640px){ .tc-cols,.tc-cards{grid-template-columns:1fr} }
+.tc-row[draggable]{cursor:grab}
+.tc-row.tc-dragging td{opacity:.35}
+.tc-row.tc-drop td,.tc-empty.tc-drop td{background:color-mix(in srgb,var(--accent) 22%,transparent);box-shadow:inset 0 1px 0 var(--accent),inset 0 -1px 0 var(--accent)}
+.tc-team-panel.tc-drop{outline:2px dashed var(--accent);outline-offset:-2px}
+.tc-stats span,.tc-stats b,.tc-stats em{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-stats b{font-size:13px}
+/* the three trade numbers as fixed rows (fit four cards across) */
+.tc-stats{display:flex;flex-direction:column;gap:0;margin-top:14px;background:var(--track)}
+.tc-stats > div{flex-direction:row;align-items:center;gap:10px;height:32px;padding:0 12px;background:none;border-bottom:1px solid var(--surface)}
+.tc-stats > div:last-child{border-bottom:0}
+.tc-stats span{flex:0 0 72px}
+.tc-stats b{flex:1 1 auto;min-width:0}
+.tc-stats em{flex:0 0 auto;text-align:right}
+/* trade analytics: one card each */
+.tc-an{margin-top:14px}
+.tc-an .panel-title{margin:2px 0 6px}
+.tc-an .tc-cards{margin-top:12px}
+.tc-card-head b{font-size:20px}
+.tc-stat{display:flex;align-items:center;gap:10px;height:32px;padding:0 12px;border-bottom:1px solid var(--surface)}
+.tc-stat:last-child{border-bottom:0}
+.tc-stat span{flex:0 0 92px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.tc-stat b{flex:1 1 auto;min-width:0;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-stat em{flex:0 0 auto;font-style:normal;font-weight:800;font-size:12px;white-space:nowrap}
+.tc-pp{flex:0 0 auto;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.tc-chg em{min-width:34px;text-align:right}
+.tc-chg.tc-blank{border-bottom-color:transparent}
+.tc-chg.muted{color:var(--muted)}
+.tc-pl{height:28px}

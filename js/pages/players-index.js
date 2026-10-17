@@ -4,7 +4,7 @@
     const content = document.getElementById('content');
     const b = await GT.load();
     SITE.subHeader({ crumbs: [['Players']],
-                     tabs: [{ label: 'All Players', href: url('pages/players/index.html'), active: true }] });
+                     tabs: [{ label: 'All Players', href: url('pages/players/index.html'), active: true }, { label: 'Trade Calculator', href: url('pages/players/trade-calculator.html') }] });
     SITE.hero({ title: 'Players', size: 'short', dots: false, image: 'background-12.png',
                 meta: ['Every NFL player since 2019 · game-by-game stats, weather and venue'] });
     let players;

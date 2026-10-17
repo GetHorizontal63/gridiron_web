@@ -22,7 +22,8 @@
             { key: 'highlights', label: 'Highlights', href: 'pages/players/highlights.html', needs: 'id' },
             { key: 'achievements', label: 'Achievements', href: 'pages/players/achievements.html', needs: 'id' },
             { key: 'game-history', label: 'Game History', href: 'pages/players/game-history.html', needs: 'id' },
-            { key: 'compare', label: 'Compare', href: 'pages/players/compare.html', carry: 'ids' }   // takes the current player along
+            { key: 'compare', label: 'Compare', href: 'pages/players/compare.html', carry: 'ids' },   // takes the current player along
+            { key: 'trade-calculator', label: 'Trade Calculator', href: 'pages/players/trade-calculator.html', menuOnly: true }   // menu + the Players index tabs
         ] },
         { key: 'recordbook', label: 'Recordbook', href: 'pages/recordbook/league-records.html', children: [
             { key: 'league-records', label: 'League Records', href: 'pages/recordbook/league-records.html' },
