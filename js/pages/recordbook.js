@@ -507,6 +507,99 @@
         }
     }
 
+    // Position groups (the season overview's Position Group Rankings): starters counted by the player's position, regular
+    // season weeks with a final score. FP+ and efficiency as js/roster-metrics.js defines them, inside the group; Coaching
+    // can score below zero, so there it is points against projection and how often the best-scoring coach was the one started.
+    const GROUPS = [['qb', 'Quarterback', ['QB']], ['rb', 'Running Back', ['RB']], ['rec', 'Receivers (WR / TE)', ['WR', 'TE']],
+                    ['st', 'Special Teams (K / P / D/ST)', ['K', 'P', 'D/ST']], ['kick', 'Kicking (K / P)', ['K', 'P']], ['hc', 'Coaching', ['HC'], true]];
+    const GROUP_NOTE = {
+        'single-game': 'Starters counted by position (a FLEX running back counts as a running back) · regular-season weeks · beat / miss = points against the starters\' projections.',
+        'single-season': 'Completed seasons, regular season, min 10 games · FP+ = the group\'s starters\' points / their projections x 100 · Efficiency = their points / the most the group could have scored with the bench · Coaching: points against projection and the share of weeks the best-scoring coach on the roster was started.',
+        'league-records': 'Completed seasons, regular season · per game and the rate records need 3+ seasons · FP+ = the group\'s starters\' points / their projections x 100 · Efficiency = their points / the most the group could have scored with the bench · Coaching: points against projection and the share of weeks the best-scoring coach on the roster was started.'
+    };
+    async function calculateGroupRecords(tab) {
+        try {
+            const [rows, completedRows] = await Promise.all([LeagueDb.query(`
+                SELECT o.display_name AS owner, fr.season, fr.week, p.player_id AS playerId, p.position,
+                       frp.slot_position AS slotPosition, frp.actual_points AS actualPoints, frp.projected_points AS projectedPoints
+                FROM fantasy_rosters fr JOIN owners o ON o.owner_id = fr.owner_id
+                JOIN fantasy_roster_players frp ON frp.roster_id = fr.roster_id JOIN players p ON p.player_id = frp.player_id
+                WHERE p.position IN ('QB','RB','WR','TE','K','P','D/ST','HC') AND EXISTS (
+                    SELECT 1 FROM matchups m JOIN matchup_team_stats s ON s.game_id = m.game_id
+                    WHERE m.season = fr.season AND m.week = fr.week AND m.season_period = 'Regular' AND s.owner_id = fr.owner_id AND s.team_score IS NOT NULL)`),
+                LeagueDb.query('SELECT DISTINCT season FROM final_placements')]);
+            const completed = new Set(completedRows.map(r => r.season));
+            const teamWeeks = new Map();
+            rows.forEach(r => { const k = `${r.owner}|${r.season}|${r.week}`; if (!teamWeeks.has(k)) teamWeeks.set(k, []); teamWeeks.get(k).push(r); });
+            const pts = r => parseFloat(r.actualPoints) || 0, isStart = r => r.slotPosition !== 'BE' && r.slotPosition !== 'IR';
+            const f1 = v => v.toFixed(1), sg = v => `${v > 0 ? '+' : ''}${v.toFixed(1)}`, pct = v => `${v.toFixed(1)}%`;
+            GROUPS.forEach(([gk, name, pos, signed]) => {
+                // one entry per team-week: points, projection, best possible, and whether the best-scoring player started
+                const weeks = [...teamWeeks.entries()].map(([k, roster]) => {
+                    const [owner, season, week] = k.split('|'), mine = roster.filter(r => pos.includes(r.position));
+                    const m = RosterMetrics.weekOf(mine), st = mine.filter(isStart);
+                    return { owner, season: +season, week: +week, act: m.actual, proj: m.projected, opt: m.optimal, started: st.length > 0,
+                             bestStart: st.length > 0 && Math.max(...st.map(pts)) >= Math.max(...mine.map(pts)) };
+                }).filter(w => w.started);
+                const pool = list => {
+                    let act = 0, proj = 0, projAll = 0, opt = 0;
+                    list.forEach(w => { act += w.act; projAll += w.proj; if (w.proj > 0) proj += w.proj; opt += w.opt; });
+                    return { act, games: list.length, ppg: list.length ? act / list.length : null, fpp: proj > 0 ? 100 * act / proj : null,
+                             eff: opt > 0 ? 100 * act / opt : null, vsProj: act - projAll, best: list.length ? 100 * list.filter(w => w.bestStart).length / list.length : null };
+                };
+                const set = (key, list, better) => updateRecord(key, list.filter(x => x.raw != null && !Number.isNaN(x.raw))
+                    .sort((a, b) => (better === 'high' ? b.raw - a.raw : a.raw - b.raw) || (b.tb || 0) - (a.tb || 0)).slice(0, 3));
+                const K = s => `grp${gk}${s}`;
+                if (tab === 'single-game') {
+                    const games = weeks.map(w => ({ ...w, label: `${w.owner} (${w.season} Wk ${w.week})` }));
+                    set(K('GameHigh'), games.map(w => ({ team: w.label, raw: w.act, value: f1(w.act) })), 'high');
+                    set(K('GameLow'), games.map(w => ({ team: w.label, raw: w.act, value: f1(w.act) })), 'low');
+                    const vs = games.filter(w => w.proj !== 0).map(w => ({ team: w.label, raw: w.act - w.proj, value: sg(w.act - w.proj) }));
+                    set(K('GameBeat'), vs, 'high');
+                    set(K('GameMiss'), vs, 'low');
+                    addRecordCategory(tab, name, [
+                        { key: K('GameHigh'), title: 'Highest Score', subtitle: 'Most points in a game' },
+                        { key: K('GameLow'), title: 'Lowest Score', subtitle: 'Fewest points in a game' },
+                        { key: K('GameBeat'), title: 'Biggest Beat', subtitle: 'Most points over projection in a game' },
+                        { key: K('GameMiss'), title: 'Biggest Miss', subtitle: 'Most points under projection in a game' }
+                    ], gk === 'hc' ? GROUP_NOTE[tab] : '');
+                    return;
+                }
+                const done = weeks.filter(w => completed.has(w.season));
+                const by = keyOf => { const m = new Map(); done.forEach(w => { const k = keyOf(w); if (!m.has(k)) m.set(k, []); m.get(k).push(w); }); return m; };
+                const rate = signed ? [['vsProj', sg, 'Points vs Projection', 'Most points over projection'], ['best', pct, 'Best Starts', 'Weeks the best coach was started']]
+                                    : [['fpp', f1, 'Best FP+', 'Points against projection x 100'], ['eff', pct, 'Best Efficiency', 'Points / best possible group score']];
+                if (tab === 'single-season') {
+                    const list = [...by(w => `${w.owner} (${w.season})`).entries()].map(([label, l]) => ({ label, p: pool(l) })).filter(x => x.p.games >= 10);
+                    set(K('SeasonHigh'), list.map(x => ({ team: x.label, raw: x.p.act, value: f1(x.p.act) })), 'high');
+                    set(K('SeasonLow'), list.map(x => ({ team: x.label, raw: x.p.act, value: f1(x.p.act) })), 'low');
+                    rate.forEach(([f, fmt], i) => set(K(`SeasonRate${i}`), list.map(x => ({ team: x.label, raw: x.p[f], tb: x.p.act, value: x.p[f] == null ? '-' : fmt(x.p[f]) })), 'high'));
+                    addRecordCategory(tab, name, [
+                        { key: K('SeasonHigh'), title: 'Most Points', subtitle: 'Most points in a season' },
+                        { key: K('SeasonLow'), title: 'Fewest Points', subtitle: 'Fewest points in a season' },
+                        { key: K('SeasonRate0'), title: rate[0][2], subtitle: `${rate[0][3]} · season` },
+                        { key: K('SeasonRate1'), title: rate[1][2], subtitle: `${rate[1][3]} · season` }
+                    ], gk === 'hc' ? GROUP_NOTE[tab] : '');
+                    return;
+                }
+                // career (League Records)
+                const list = [...by(w => w.owner).entries()].map(([label, l]) => ({ label, p: pool(l), seasons: new Set(l.map(w => w.season)).size }));
+                const qual = list.filter(x => x.seasons >= 3);
+                set(K('CareerHigh'), list.map(x => ({ team: x.label, raw: x.p.act, value: f1(x.p.act) })), 'high');
+                set(K('CareerPpg'), qual.map(x => ({ team: x.label, raw: x.p.ppg, value: f1(x.p.ppg) })), 'high');
+                rate.forEach(([f, fmt], i) => set(K(`CareerRate${i}`), qual.map(x => ({ team: x.label, raw: x.p[f], tb: x.p.act, value: x.p[f] == null ? '-' : fmt(x.p[f]) })), 'high'));
+                addRecordCategory(tab, `${name} (Career)`, [
+                    { key: K('CareerHigh'), title: 'Most Points', subtitle: 'Career points' },
+                    { key: K('CareerPpg'), title: 'Best Per Game', subtitle: 'Career points per game (min 3 seasons)' },
+                    { key: K('CareerRate0'), title: rate[0][2], subtitle: `${rate[0][3]} (min 3 seasons)` },
+                    { key: K('CareerRate1'), title: rate[1][2], subtitle: `${rate[1][3]} (min 3 seasons)` }
+                ], gk === 'hc' ? GROUP_NOTE[tab] : '');
+            });
+        } catch (error) {
+            console.error('Error calculating position group records:', error);
+        }
+    }
+
     // ================================================================== rendering
     // the record holder's logo: the manager name at the start of the label ("Gabe (2021)", "Jack vs Blake", ...)
     const ownerOf = label => String(label || '').split(/[\s(]/)[0];
@@ -524,7 +617,9 @@
     const nameHTML = d => {
         if (!d) return '--';
         const m = String(d.team).match(/^(.+?) \((\d{4}) Wk (\d+)\) - (.+)$/);
-        return m ? `<b class="rb-two">${esc(m[4])}</b><small class="rb-two">${esc(m[1])} · ${m[2]} Wk ${m[3]}</small>` : esc(d.team);
+        if (m) return `<b class="rb-two">${esc(m[4])}</b><small class="rb-two">${esc(m[1])} · ${m[2]} Wk ${m[3]}</small>`;
+        const w = String(d.team).match(/^(\S+) \((\d{4}) Wk (\d+)\)$/);
+        return w ? `<b class="rb-two">${esc(w[1])}</b><small class="rb-two">${w[2]} Wk ${w[3]}</small>` : esc(d.team);
     };
     const recordCard = card => {
         const data = (RESULTS[card.key] || []).map(d => ({ ...d, value: shown(card.key, d.value, d.raw) }));
@@ -902,6 +997,7 @@
             if (page === 'single-season') await calculatePlayerRecords();
             if (page === 'single-game') await calculatePositionalAndBenchRecords();
             if (page !== 'single-game') { await calculateTransactionAndLuckRecords(); await calculateLineupRecords(); }
+            await calculateGroupRecords(page);
             renderRecords(page);
         }
     } catch (error) {

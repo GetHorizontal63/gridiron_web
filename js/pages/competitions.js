@@ -196,7 +196,7 @@
     async function seasonGroups() {
         const host = document.getElementById('season-groups');
         if (!host || typeof RosterMetrics === 'undefined') return;
-        const GROUPS = [['Quarterback', ['QB']], ['Runningback', ['RB']], ['Receivers', ['WR', 'TE'], 'WR / TE'],
+        const GROUPS = [['Quarterback', ['QB']], ['Running Back', ['RB']], ['Receivers', ['WR', 'TE'], 'WR / TE'],
                         ['Special Teams', ['K', 'P', 'D/ST'], 'K / P / D/ST'], ['Kicking', ['K', 'P'], 'K / P'], ['Coaching', ['HC'], '', true]];
         const rows = await GT.query(`
             SELECT o.display_name AS owner, fr.week, p.player_id AS playerId, p.position,
