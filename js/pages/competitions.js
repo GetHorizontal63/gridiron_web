@@ -484,16 +484,29 @@
     }
 
     // ============================================================ STANDINGS
-    function standings() {
+    // ?week=N: the standings as they stood after that regular-season week (the latest finished week by default)
+    async function standings() {
+        const regWeeks = [...new Set(games.filter(g => g.period === 'Regular' && g.hs != null).map(g => g.week))].sort((x, y) => x - y);
+        const last = regWeeks[regWeeks.length - 1];
+        const week = regWeeks.includes(Number(param('week'))) ? Number(param('week')) : last;
+        const pic = week != null && week !== last ? await GT.standings(season, week) : picture;
         SITE.hero({ title: `${season} Standings`, size: 'short', dots: false, image: 'background-18.png',
                     meta: [`Regular season · ranked by record, ${season >= 2026 ? 'point differential, head-to-head' : 'head-to-head, point differential'}, points for`] });
         const byDiv = {};
-        picture.divisionStandings.forEach(r => { (byDiv[r.divisionName] = byDiv[r.divisionName] || []).push(r); });
+        pic.divisionStandings.forEach(r => { (byDiv[r.divisionName] = byDiv[r.divisionName] || []).push(r); });
         content.innerHTML = `<div class="wrap page-pad">
-            <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${season} season</div><h2 class="section-title">Standings</h2></div>${seasonSelect()}</div>
+            <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${season} season${week != null ? ` · through week ${week}` : ''}</div><h2 class="section-title">Standings</h2></div>
+                <div class="section-tools" style="margin:0">${seasonSelect()}${regWeeks.length ? `<select class="select" id="standings-week">${regWeeks.map(w =>
+                    `<option value="${w}"${w === week ? ' selected' : ''}>Week ${w}</option>`).join('')}</select>` : ''}</div></div>
             ${Object.entries(byDiv).map(([name, rows]) => `<div class="panel"><h3 class="panel-title" style="margin-bottom:12px">${esc(name)}</h3>${standingsTable(rows)}</div>`).join('')}
-            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Overall</h3>${standingsTable(picture.standings)}</div></div>`;
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Overall</h3>${standingsTable(pic.standings)}</div></div>`;
         bindSeason();
+        const wk = document.getElementById('standings-week');
+        if (wk) wk.addEventListener('change', e => {
+            const u = new URL(location.href);
+            if (Number(e.target.value) === last) u.searchParams.delete('week'); else u.searchParams.set('week', e.target.value);
+            location.href = u;
+        });
     }
 
     // ============================================================ PLAYOFF BRACKET

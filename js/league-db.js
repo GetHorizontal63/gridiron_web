@@ -302,7 +302,8 @@
             GROUP BY m.season, o.owner_id
             ORDER BY m.season, d.division_name, o.display_name
         `),
-        playoffPicture: async (season) => {
+        // throughWeek (optional): the standings as they stood after that week (records, points and the head-to-head tiebreak)
+        playoffPicture: async (season, throughWeek = null) => {
             const [rules, criteria, qualifiers, bracket, placements, standings, divisionStandings, divisionSlots, h2hRows] = await Promise.all([
                 query(`SELECT playoff_team_count, qualification_method, regular_season_end_week, notes, tiebreak
                        FROM playoff_rules WHERE season = $season`, { $season: season }),
@@ -346,9 +347,9 @@
                        FROM matchup_team_stats mts
                        JOIN matchups m ON m.game_id = mts.game_id
                        JOIN owners o ON o.owner_id = mts.owner_id
-                       WHERE m.season = $season AND m.season_period = 'Regular'
+                       WHERE m.season = $season AND m.season_period = 'Regular' AND ($week IS NULL OR m.week <= $week)
                        GROUP BY o.owner_id
-                       ORDER BY wins DESC, pointsFor DESC`, { $season: season }),
+                       ORDER BY wins DESC, pointsFor DESC`, { $season: season, $week: throughWeek }),
                 // Same standings, but grouped by division -- the playoff cutoff is
                 // per division in every format except a single-pool season, so an
                 // overall ranking can name the wrong teams as "in".
@@ -365,9 +366,9 @@
                        JOIN owners o ON o.owner_id = mts.owner_id
                        JOIN division_members dm ON dm.owner_id = o.owner_id
                        JOIN divisions d ON d.division_id = dm.division_id AND d.season = $season
-                       WHERE m.season = $season AND m.season_period = 'Regular'
+                       WHERE m.season = $season AND m.season_period = 'Regular' AND ($week IS NULL OR m.week <= $week)
                        GROUP BY d.division_id, o.owner_id
-                       ORDER BY d.division_name, wins DESC, pointsFor DESC`, { $season: season }),
+                       ORDER BY d.division_name, wins DESC, pointsFor DESC`, { $season: season, $week: throughWeek }),
                 query(`SELECT division_id AS divisionId, auto_slots AS autoSlots, playin_slots AS playinSlots
                        FROM playoff_division_slots WHERE season = $season`, { $season: season }),
                 // Regular-season head-to-head results, for the tiebreak.
@@ -379,8 +380,8 @@
                        JOIN matchups m ON m.game_id = mts.game_id
                        JOIN owners o ON o.owner_id = mts.owner_id
                        JOIN owners opp ON opp.owner_id = mts.opponent_owner_id
-                       WHERE m.season = $season AND m.season_period = 'Regular'
-                       GROUP BY mts.owner_id, mts.opponent_owner_id`, { $season: season })
+                       WHERE m.season = $season AND m.season_period = 'Regular' AND ($week IS NULL OR m.week <= $week)
+                       GROUP BY mts.owner_id, mts.opponent_owner_id`, { $season: season, $week: throughWeek })
             ]);
             // Rank with the league tiebreak (record, head-to-head, point differential,
             // points for). Divisions are ranked separately: the cutoffs are per division.

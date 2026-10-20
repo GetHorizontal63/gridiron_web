@@ -164,7 +164,7 @@
     const slotSort = (a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot) || (b.points || 0) - (a.points || 0);
     const isStarter = r => r.slot !== 'BE' && r.slot !== 'IR';
 
-    const standings = season => LeagueDb.playoffPicture(Number(season));
+    const standings = (season, throughWeek = null) => LeagueDb.playoffPicture(Number(season), throughWeek == null ? null : Number(throughWeek));
 
     // The week in progress, as of the last data update (live_matchups: never counted in standings or records).
     // Same shape as the pages' game rows, plus live: true, projections and when it was updated. Empty when no week is live

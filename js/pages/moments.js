@@ -152,11 +152,90 @@
         }
     }
 
+    // ================================================================ A COMEBACK SEASON (python/moment_rally.py)
+    function renderRally(d) {
+        const R = d.rally; if (!R) return;
+        const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+        const played = R.weeks.filter(w => w.week > 0), last = played[played.length - 1];
+        const tail = played.slice(-8), tailW = tail.filter(w => w.result === 'W').length;
+        const clinch = played.find(w => w.odds >= 1 && played.slice(played.indexOf(w)).every(x => x.odds >= 1));
+        const H = R.halves || [];
+        const sgn = v => `${v >= 0 ? '+' : ''}${f2(v)}`;
+        const cmp = (label, a, c, delta, good = null, tip = '') => `<tr><td${tip ? ` data-tip="${esc(tip)}"` : ''}>${label}</td><td class="num">${a}</td><td class="num"><b>${c}</b></td>
+            <td class="num ${good == null ? '' : good ? 'hm-up' : 'hm-down'}">${delta}</td></tr>`;
+        const host = document.getElementById('hm-rally');
+        host.innerHTML = `<div class="hm-regret-head"><div class="eyebrow">The climb</div><h2 class="section-title">${esc(R.owner)}'s Odds, Week by Week</h2>
+            <p class="section-copy">Playoff odds after every week: the rest of the real schedule simulated ${R.sims.toLocaleString()} times, each team scoring like its season so far (steadied toward the league average early on). The top ${R.spots} in each division made the Championship bracket; ties went to head-to-head, then point differential, then points for.</p></div>
+            <div class="panel hm-retro-panel">
+                <div class="db-kpis hm-retro-kpis">
+                    <div class="db-kpi"><span>Low point</span><b>${esc(R.low.record)}</b><small>after week ${R.low.week} · ${ord(R.div_size)} of ${R.div_size}</small></div>
+                    <div class="db-kpi"><span>Playoff odds</span><b>${pct(R.low.odds)}</b><small>at the bottom</small></div>
+                    <div class="db-kpi"><span>Last ${tail.length} games</span><b>${tailW}-${tail.length - tailW}</b><small>${clinch ? `clinched in week ${clinch.week}` : ''}</small></div>
+                    <div class="db-kpi"><span>Final</span><b>${esc(last.record)}</b><small>${ord(last.div_rank)} in the ${esc(R.division)}</small></div>
+                </div>
+                <div><h4 class="gc-sub">Playoff odds after each week</h4><div id="hm-rally-chart" class="hm-retro-chart"></div></div>
+                ${H.length === 2 ? `<h4 class="gc-sub">What changed: weeks ${H[0].weeks[0]}-${H[0].weeks[1]} against weeks ${H[1].weeks[0]}-${H[1].weeks[1]}</h4>
+                <div class="table-scroll"><table class="data-table hm-retro-table">${SITE.cols('40%', '20%', '20%', '20%')}<thead><tr>
+                    <th></th><th class="num">Weeks ${H[0].weeks[0]}-${H[0].weeks[1]}</th><th class="num">Weeks ${H[1].weeks[0]}-${H[1].weeks[1]}</th><th class="num">Change</th></tr></thead><tbody>
+                    ${cmp('Record', H[0].record, H[1].record, '')}
+                    ${cmp('Points scored per game', f2(H[0].pf), f2(H[1].pf), sgn(H[1].pf - H[0].pf), H[1].pf >= H[0].pf)}
+                    ${cmp('Points allowed per game', f2(H[0].pa), f2(H[1].pa), sgn(H[1].pa - H[0].pa), H[1].pa <= H[0].pa)}
+                    ${cmp(`${esc(R.owner)}'s weekly score rank (average)`, H[0].rank.toFixed(1), H[1].rank.toFixed(1), '', H[1].rank <= H[0].rank)}
+                    ${cmp("Opponent's weekly score rank (average)", H[0].opp_rank.toFixed(1), H[1].opp_rank.toFixed(1), '', H[1].opp_rank >= H[0].opp_rank)}
+                    ${cmp('All-play record', H[0].allplay, H[1].allplay, '', null, 'His score each week against all 15 other teams')}
+                </tbody></table></div>` : ''}
+                <h4 class="gc-sub">The starters</h4>
+                <div class="table-scroll"><table class="data-table hm-retro-table">${SITE.cols('28%', '8%', '16%', '16%', '16%', '16%')}<thead><tr>
+                    <th>Player</th><th>Pos</th><th class="num">Wks ${H[0].weeks[0]}-${H[0].weeks[1]} starts</th><th class="num">Per start</th><th class="num">Wks ${H[1] ? `${H[1].weeks[0]}-${H[1].weeks[1]}` : ''} starts</th><th class="num">Per start</th></tr></thead><tbody>
+                    ${R.players.map(x => { const a = x.a_starts ? x.a_pts / x.a_starts : null, c = x.b_starts ? x.b_pts / x.b_starts : null;
+                        return `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.pos || '')}</td><td class="num">${x.a_starts}</td><td class="num">${a == null ? '-' : f2(a)}</td>
+                        <td class="num">${x.b_starts}</td><td class="num ${a != null && c != null ? (c > a ? 'hm-up' : 'hm-down') : ''}"><b>${c == null ? '-' : f2(c)}</b></td></tr>`; }).join('')}
+                </tbody></table></div>
+                <h4 class="gc-sub">Roster moves</h4>
+                <div class="table-scroll"><table class="data-table hm-retro-table">${SITE.cols('12%', '20%', '36%', '10%', '11%', '11%')}<thead><tr>
+                    <th>Week</th><th>Move</th><th>Player</th><th>Pos</th><th class="num">Starts after</th><th class="num">Points</th></tr></thead><tbody>
+                    ${R.moves.map(m => `<tr><td>Week ${m.week}</td><td>${esc(m.move)}</td><td>${esc(m.name)}</td><td>${esc(m.pos || '')}</td>
+                        <td class="num">${m.move === 'Dropped' ? '' : m.starts}</td><td class="num">${m.move === 'Dropped' ? '' : f2(m.pts)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No moves.</td></tr>'}
+                </tbody></table></div>
+                <h4 class="gc-sub">Week by week</h4>
+                <div class="table-scroll"><table class="data-table hm-retro-table">${SITE.cols('8%', '15%', '15%', '6%', '13%', '20%', '8%', '7%', '8%')}<thead><tr>
+                    <th>Week</th><th>Opponent</th><th class="num">Score</th><th class="num">W/L</th><th class="num" data-tip="Where each score ranked among the week's ${played[0].teams || 16} scores">Weekly rank</th><th>Top starter</th><th class="num">Record</th><th class="num">Div</th><th class="num">Odds</th></tr></thead><tbody>
+                    ${played.map(w => `<tr><td>Week ${w.week}</td><td><span class="team-cell"><img src="${GT.logo(w.opp)}" alt=""><span>${esc(w.opp)}</span></span></td>
+                        <td class="num">${f2(w.pf)} - ${f2(w.pa)}</td><td class="num ${w.result === 'W' ? 'hm-up' : 'hm-down'}"><b>${w.result}</b></td>
+                        <td class="num">${ord(w.rank)} v ${ord(w.opp_rank)}</td><td>${(w.top || [])[0] ? `${esc(w.top[0].name)} <span class="muted">${f2(w.top[0].pts)}</span>` : ''}</td>
+                        <td class="num">${esc(w.record)}</td><td class="num">${ord(w.div_rank)}</td><td class="num"><b>${pct(w.odds)}</b></td></tr>`).join('')}
+                </tbody></table></div>
+            </div>`;
+        const draw = () => {
+            const el = document.getElementById('hm-rally-chart'); if (!el) return;
+            const C = { accent: SITE.color('accent'), red: SITE.color('danger'), muted: SITE.color('muted'), line: SITE.color('line-strong'), grid: SITE.color('track') };
+            const ch = echarts.getInstanceByDom(el) || echarts.init(el);
+            ch.setOption({
+                textStyle: { fontFamily: 'Inter, sans-serif' },
+                tooltip: { trigger: 'axis', backgroundColor: 'rgba(17,17,17,.92)', borderWidth: 0, textStyle: { color: '#fff', fontSize: 11 },
+                           formatter: ps => { const w = R.weeks[ps[0].dataIndex];
+                               return w.week ? `<b>Week ${w.week}</b> · ${w.result} vs ${esc(w.opp)} ${f2(w.pf)}-${f2(w.pa)}<br>${esc(w.record)} · ${ord(w.div_rank)} in division<br>Playoff odds ${pct(w.odds)}` : `<b>Before the season</b><br>Playoff odds ${pct(w.odds)}`; } },
+                grid: { left: 40, right: 12, top: 14, bottom: 24 },
+                xAxis: { type: 'category', boundaryGap: false, data: R.weeks.map(w => w.week ? `W${w.week}` : 'Pre'), axisLabel: { color: C.muted, fontSize: 10 }, axisLine: { lineStyle: { color: C.line } } },
+                yAxis: { type: 'value', min: 0, max: 1, interval: 0.25, axisLabel: { color: C.muted, fontSize: 10, formatter: v => `${Math.round(v * 100)}%` }, splitLine: { lineStyle: { color: C.grid } } },
+                series: [{ type: 'line', smooth: false, symbol: 'circle', symbolSize: 7, lineStyle: { color: C.accent, width: 2.5 },
+                           areaStyle: { color: C.accent, opacity: 0.12 },
+                           data: R.weeks.map(w => ({ value: w.odds, itemStyle: { color: !w.week ? C.muted : w.result === 'W' ? C.accent : C.red } })),
+                           markLine: { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: C.line, type: 'dashed' }, data: [{ yAxis: 0.5 }] } }]
+            }, true);
+        };
+        draw();
+        window.addEventListener('themechange', draw);
+        window.addEventListener('resize', () => { const el = document.getElementById('hm-rally-chart'); const c = el && echarts.getInstanceByDom(el); c && c.resize(); });
+    }
+
     // ================================================================ LIST
     // the hero's meta lines for a moment: the same text on its detail page and its banner in the list
     function ordinal(n) { return n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th'); }
     function metaOf(d) {
-        const P = d.phantom;
+        const P = d.phantom, RL = d.rally;
+        if (RL) { const w = RL.weeks, end = w[w.length - 1];
+                  return [`${d.season} season`, `${esc(RL.owner)} ${esc(RL.low.record)} after week ${RL.low.week} · finished ${esc(end.record)} · playoff odds bottomed at ${pct(RL.low.odds)}`]; }
         if (P) return [`${d.season} season`, `${esc(P.owner)} ${P.record[0]}-${P.record[1]} · ${ordinal(P.place)} of ${P.table.length} · champion ${esc(P.table[0].owner)}`];
         const [W, L] = winnerOf(d);
         return [`${d.season} · ${esc(label(d))}`, `${esc(W)} ${f2(d.final[W])} - ${f2(d.final[L])} ${esc(L)} · decided by ${f2(Math.abs(d.final[W] - d.final[L]))}`];
@@ -202,8 +281,10 @@
             ${s.dek ? `<p class="hm-dek">${esc(s.dek)}</p>` : ''}
             <article class="hm-article">${(s.sections || []).map(sec => `<h3 class="hm-h">${esc(sec.h)}</h3>${sec.p.map(p => `<p>${md(p)}</p>`).join('')}`).join('')}</article>
             ${P ? '<section class="hm-retro" id="hm-phantom"></section>' : ''}
+            ${d.rally ? '<section class="hm-retro" id="hm-rally"></section>' : ''}
             <p class="hm-foot"></p></div>`;
         renderPhantom(d);
+        renderRally(d);
     }
 
     // ================================================================ DETAIL
