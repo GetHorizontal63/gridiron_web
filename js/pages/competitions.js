@@ -180,11 +180,60 @@
             </section>
             <section class="an-section" id="season-stream"></section>
             <section class="an-section" id="season-nfl"></section>
-            <section class="an-section" id="season-quads"></section></div>`;
+            <section class="an-section" id="season-quads"></section>
+            <section class="an-section" id="season-groups"></section></div>`;
         bindSeason();
         seasonStream();
         seasonNfl();
         seasonQuads();
+        seasonGroups();
+    }
+
+    // managers ranked by position group over the regular season's finished weeks (starters by the player's position,
+    // so a FLEX RB counts as a running back). FP+ and roster efficiency as js/roster-metrics.js defines them, inside the group:
+    //   FP+        = the group's starters' points / their projections x 100 (pooled over the weeks)
+    //   Efficiency = those points / the most the group could have scored with its own bench (same-position swaps)
+    async function seasonGroups() {
+        const host = document.getElementById('season-groups');
+        if (!host || typeof RosterMetrics === 'undefined') return;
+        const GROUPS = [['Quarterback', ['QB']], ['Runningback', ['RB']], ['Receivers', ['WR', 'TE'], 'WR / TE'],
+                        ['Special Teams', ['K', 'P', 'D/ST'], 'K / P / D/ST'], ['Kicking', ['K', 'P'], 'K / P'], ['Coaching', ['HC'], '', true]];
+        const rows = await GT.query(`
+            SELECT o.display_name AS owner, fr.week, p.player_id AS playerId, p.position,
+                   frp.slot_position AS slotPosition, frp.actual_points AS actualPoints, frp.projected_points AS projectedPoints
+            FROM fantasy_rosters fr JOIN owners o ON o.owner_id = fr.owner_id
+            JOIN fantasy_roster_players frp ON frp.roster_id = fr.roster_id JOIN players p ON p.player_id = frp.player_id
+            WHERE fr.season = $s AND fr.week IN (SELECT DISTINCT m.week FROM matchups m JOIN matchup_team_stats t ON t.game_id = m.game_id
+                                                 WHERE m.season = $s AND m.season_period = 'Regular' AND t.team_score IS NOT NULL)`, { $s: season });
+        if (!rows.length) return;
+        const weeks = new Set(rows.map(r => r.week)).size;
+        const byTeamWeek = new Map();
+        rows.forEach(r => { const k = `${r.owner}|${r.week}`; if (!byTeamWeek.has(k)) byTeamWeek.set(k, []); byTeamWeek.get(k).push(r); });
+        const owners = [...new Set(rows.map(r => r.owner))];
+        // Coaching scores go negative and its projections sit near zero, so the ratios break: there it shows points against
+        // projection (+/- Proj) and how often the manager started his best-scoring coach (Best start) instead
+        const table = ([name, pos, sub, signed]) => {
+            const lines = owners.map(owner => {
+                const rosters = [...byTeamWeek.entries()].filter(([k]) => k.startsWith(owner + '|')).map(([, roster]) => roster.filter(r => pos.includes(r.position)));
+                const wk = rosters.map(r => RosterMetrics.weekOf(r));
+                let act = 0, proj = 0, projAll = 0, best = 0;
+                wk.forEach(m => { act += m.actual; projAll += m.projected; if (m.projected > 0) proj += m.projected; best += m.optimal; });
+                const pts = r => parseFloat(r.actualPoints) || 0, start = r => r.slotPosition !== 'BE' && r.slotPosition !== 'IR';
+                const bestWeeks = rosters.filter(r => r.some(start) && Math.max(...r.filter(start).map(pts)) >= Math.max(...r.map(pts))).length;
+                return { owner, fp: act, fpp: signed ? act - projAll : proj > 0 ? 100 * act / proj : null,
+                         eff: signed ? (rosters.length ? 100 * bestWeeks / rosters.length : null) : best > 0 ? 100 * act / best : null };
+            }).sort((x, y) => y.fp - x.fp);
+            return `<div class="panel pg-panel"><div class="pg-head"><h3 class="panel-title">${esc(name)}</h3>${sub ? `<span>${esc(sub)}</span>` : ''}</div>
+                <table class="data-table pg-table">${SITE.cols('30px', 'auto', '58px', '54px', '62px')}
+                    <thead><tr><th class="num">#</th><th>Manager</th><th class="num">FP</th><th class="num">${signed ? 'vs Proj' : 'FP+'}</th><th class="num">${signed ? 'Best' : 'Eff'}</th></tr></thead>
+                    <tbody>${lines.map((l, i) => `<tr><td class="num"><b>${i + 1}</b></td>
+                        <td><span class="pg-mgr"><img src="${GT.logo(l.owner)}" alt="">${GT.managerLink(l.owner, season)}</span></td>
+                        <td class="num"><b>${GT.pts(l.fp)}</b></td><td class="num">${l.fpp == null ? '-' : signed ? `${l.fpp > 0 ? '+' : ''}${l.fpp.toFixed(1)}` : l.fpp.toFixed(1)}</td>
+                        <td class="num">${l.eff == null ? '-' : `${l.eff.toFixed(1)}%`}</td></tr>`).join('')}</tbody></table></div>`;
+        };
+        host.innerHTML = `<div class="panel-head"><div><div class="eyebrow">${season} regular season · ${weeks} week${weeks === 1 ? '' : 's'}</div><h2 class="section-title">Position Group Rankings</h2>
+                <p class="section-copy" style="max-width:none">Every manager ranked by the fantasy points their starters scored at each position group. FP+ = those starters' points against their projections (100 = right on projection). Eff = the share of the most the group could have scored with that manager's own bench. Coaching scores can go negative, so it shows points against projection and how often the best-scoring coach on the roster was the one started.</p></div></div>
+            <div class="pg-grid">${GROUPS.map(table).join('')}</div>`;
     }
 
     // the league against the Stream Team: the best lineup each week from free agents alone (regular season and playoffs)

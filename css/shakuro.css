@@ -1592,3 +1592,17 @@ a.ap-row:hover{background:var(--hover)}
 .tc-chg.tc-blank{border-bottom-color:transparent}
 .tc-chg.muted{color:var(--muted)}
 .tc-pl{height:28px}
+/* season overview: position group rankings */
+.pg-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.pg-panel{margin-top:0;padding:18px 18px 12px}
+.pg-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+.pg-head span{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);white-space:nowrap}
+.pg-table th,.pg-table td{height:32px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-table th,.pg-table td{padding-left:4px;padding-right:4px}
+.pg-table th:first-child,.pg-table td:first-child{padding-left:0}
+.pg-table th:last-child,.pg-table td:last-child{padding-right:0}
+.pg-mgr{display:flex;align-items:center;gap:8px;min-width:0}
+.pg-mgr img{width:20px;height:20px;object-fit:contain;flex:0 0 20px}
+.pg-mgr a{overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1100px){ .pg-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:640px){ .pg-grid{grid-template-columns:1fr} }
