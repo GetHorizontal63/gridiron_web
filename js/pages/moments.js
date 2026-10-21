@@ -22,7 +22,8 @@
         crumbs: [['Past Seasons', url('pages/past-seasons/index.html')], ['Historic League Moments', one ? url('pages/past-seasons/moments.html') : null],
                  ...(one ? [[one.title]] : [])].map(c => c[1] === null ? [c[0]] : c),
         tabs: [{ label: 'All Seasons', href: url('pages/past-seasons/index.html') },          // moments span seasons: same tabs as All Seasons
-               { label: 'Historic League Moments', href: url('pages/past-seasons/moments.html'), active: true }]
+               { label: 'Historic League Moments', href: url('pages/past-seasons/moments.html'), active: true },
+               { label: 'Watch', href: url('pages/past-seasons/watch.html') }]
     });
     if (!moments.length) { content.innerHTML = '<div class="wrap"><p class="empty">No moments yet.</p></div>'; return; }
     if (!one) return listPage();

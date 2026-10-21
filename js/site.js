@@ -50,6 +50,7 @@
             { key: 'transactions', label: 'Transactions', href: 'pages/past-seasons/transactions.html' },   // trades + free agency
             { key: 'draft', label: 'Draft Grades', href: 'pages/past-seasons/draft.html' },
             { key: 'all-pro', label: 'All-Pro Teams', href: 'pages/past-seasons/all-pro.html' },
+            { key: 'watch', label: 'Watch', href: 'pages/past-seasons/watch.html', menuOnly: true },   // live TV (current season): tab only on All Seasons
             { key: 'moments', label: 'Historic League Moments', href: 'pages/past-seasons/moments.html', menuOnly: true }   // cross-season: tab only on All Seasons
         ] }
     ];
@@ -154,6 +155,9 @@
             <nav class="sub-tabs">${tabs.map(t => `<a href="${t.href}" class="${t.active ? 'active' : ''}">${esc(t.label)}</a>`).join('')}</nav>
             ${action ? `<button class="btn btn-accent" id="${action.id}">${esc(action.label)}</button>` : ''}
         </div></div>`;
+        // a long tab row scrolls sideways: bring the active tab into view
+        const nav = holder.querySelector('.sub-tabs'), on = nav.querySelector('a.active');
+        if (on) { const over = on.getBoundingClientRect().right - nav.getBoundingClientRect().right; if (over > 0) nav.scrollLeft += over; }
     }
 
     // Section tabs straight from the site map (adds ?m= / ?id= where the page needs one)

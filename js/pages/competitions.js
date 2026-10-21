@@ -12,7 +12,8 @@
     if (page === 'index') {
         SITE.subHeader({ crumbs: [['Past Seasons']],
                          tabs: [{ label: 'All Seasons', href: url('pages/past-seasons/index.html'), active: true },
-                                { label: 'Historic League Moments', href: url('pages/past-seasons/moments.html') }] });
+                                { label: 'Historic League Moments', href: url('pages/past-seasons/moments.html') },
+                                { label: 'Watch', href: url('pages/past-seasons/watch.html') }] });
         SITE.hero({ title: 'Past Seasons', size: 'short', dots: false, image: 'background-7.png',
                     meta: [`${seasonList.length} seasons of Grass Touchers FFL · ${seasonList[seasonList.length - 1]}-${seasonList[0]}`] });
         const [placeRows, recs, weeks] = await Promise.all([
