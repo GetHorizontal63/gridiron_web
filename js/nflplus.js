@@ -218,28 +218,40 @@
         if (!b || b.state === 'pre') return `${card}<p class="np-empty">Stats appear at kickoff.</p>`;
         const t = b.teams[side] || b.teams[0], st = b.stats[t.id] || {};
         const toggle = `<div class="xr-toggle">${b.teams.map((x, i) => `<button type="button" data-side="${i}" class="${i === side ? 'on' : ''}"><img src="${logo(x.abbr)}" alt="">${esc(x.name)}</button>`).join('')}</div>`;
-        const teamStats = `<table class="xr-table">${cols('60%', '40%')}<thead><tr><th>Team stats</th><th class="num">${esc(t.abbr)}</th></tr></thead>
-            <tbody>${TEAM_STATS.filter(([k]) => st[k] != null).map(([k, label]) => `<tr><td>${label}</td><td class="num">${esc(st[k])}</td></tr>`).join('')}</tbody></table>`;
+        // fixed column widths, never clipped: each stat column is as wide as its longest entry (in characters of the
+        // table's font), the name column takes what's left and shows the short name ("R. Stevenson"; the full name on hover)
+        const chars = v => String(v ?? '').length;
+        const statCol = n => `calc(${n}ch + 8px)`;
+        const brief = n => { const w = String(n || '').split(' ').filter(x => !/^(Jr\.?|Sr\.?|II|III|IV|V)$/.test(x));
+            return w.length > 1 ? `${w[0][0]}. ${w.slice(1).join(' ')}` : String(n || ''); };
+        const tsRows = TEAM_STATS.filter(([k]) => st[k] != null);
+        const teamStats = `<h4>Team stats</h4><table class="xr-table xr-box">${cols('auto', statCol(Math.max(chars(t.abbr), ...tsRows.map(([k]) => chars(st[k])))))}
+            <thead><tr><th></th><th class="num">${esc(t.abbr)}</th></tr></thead>
+            <tbody>${tsRows.map(([k, label]) => `<tr><td>${label}</td><td class="num">${esc(st[k])}</td></tr>`).join('')}</tbody></table>`;
         const groups = GROUPS.map(([key, title]) => { const g = (b.players[t.id] || {})[key]; if (!g || !g.rows.length) return '';
-            const w = `${Math.max(9, 60 / g.labels.length).toFixed(1)}%`;
-            return `<div class="xr-block"><h4>${title}</h4><div class="xr-scroll"><table class="xr-table xr-box" style="min-width:${Math.max(100, 40 + g.labels.length * 11)}%">${cols('40%', ...g.labels.map(() => w))}
+            // no sideways scroll: the name takes a share, every stat column the rest in proportion to its widest entry
+            const room = g.labels.map((l, i) => Math.max(3, chars(l), ...g.rows.map(r => chars(r.stats[i] ?? '-')), chars((g.totals || [])[i])));
+            return `<div class="xr-block"><h4>${title}</h4><div class="xr-scroll"><table class="xr-table xr-box">${cols('auto', ...room.map(statCol))}
                 <thead><tr><th></th>${g.labels.map(l => `<th class="num">${esc(l)}</th>`).join('')}</tr></thead>
-                <tbody>${g.rows.map(r => `<tr><td title="${esc(r.full || r.name)}">${esc(r.name)}</td>${g.labels.map((_, i) => `<td class="num">${esc(r.stats[i] ?? '-')}</td>`).join('')}</tr>`).join('')}
+                <tbody>${g.rows.map(r => `<tr><td title="${esc(r.full || r.name)}">${esc(brief(r.full || r.name))}</td>${g.labels.map((_, i) => `<td class="num">${esc(r.stats[i] ?? '-')}</td>`).join('')}</tr>`).join('')}
                 ${g.totals ? `<tr class="xr-total"><td>Total</td>${g.labels.map((_, i) => `<td class="num">${esc(g.totals[i] ?? '')}</td>`).join('')}</tr>` : ''}</tbody></table></div></div>`; }).join('');
         return `${card}${toggle}<div class="xr-block">${teamStats}</div>${groups}`;
     }
     // the Plays tab: every play, drive by drive, newest first. A play shows only `delay` ms after it happened (its
-    // wallclock), so the panel never runs ahead of the delayed video; a drive's result waits for its last play
-    function playsHtml(b, delay = 15000) {
+    // wallclock), so the panel never runs ahead of the delayed video; a drive's result waits for its last play.
+    // `folded`: the drive ids the viewer has collapsed (the header toggles; the page keeps the set across refreshes)
+    function playsHtml(b, delay = 15000, folded = new Set()) {
         if (!b || b.state === 'pre') return '<p class="np-empty">Plays appear at kickoff.</p>';
         const cutoff = Date.now() - delay;
         const drives = (b.drives || []).map(d => { const shown = d.plays.filter(p => !p.wall || p.wall <= cutoff);
             return { ...d, shown, done: shown.length === d.plays.length }; }).filter(d => d.shown.length);
         if (!drives.length) return '<p class="np-empty">No plays yet.</p>';
-        return `<div class="xr-plays">${drives.slice().reverse().map(d => `<div class="xr-drive">
-            <div class="xr-dhead"><img src="${logo(d.team)}" alt=""><b>${esc(d.team)}</b><span>${d.done ? `${esc(d.desc)}${d.result ? ` · ${esc(d.result)}` : ''}` : 'Drive in progress'}</span></div>
-            ${d.shown.slice().reverse().map(p => `<div class="xr-play${p.scoring ? ' score' : ''}"><span class="xr-pq">Q${esc(p.q)} ${esc(p.clock)}${p.down ? ` · ${esc(p.down)}` : ''}</span>
-                ${p.scoring ? `<span class="xr-pt"><b>${esc(p.score)}</b></span>` : `<span class="xr-ptype">${esc(p.type)}</span>`}<p title="${esc(p.text)}">${esc(p.text)}</p></div>`).join('')}</div>`).join('')}</div>`;
+        const all = drives.every(d => folded.has(String(d.id)));
+        return `<div class="xr-fold"><button type="button" data-fold="${all ? 'open' : 'all'}">${all ? 'Expand all' : 'Collapse all'}</button></div>
+            <div class="xr-plays">${drives.slice().reverse().map(d => { const shut = folded.has(String(d.id)); return `<div class="xr-drive${shut ? ' shut' : ''}">
+            <button type="button" class="xr-dhead" data-drive="${esc(d.id)}" aria-expanded="${!shut}"><img src="${logo(d.team)}" alt=""><b>${esc(d.team)}</b><span>${d.done ? `${esc(d.desc)}${d.result ? ` · ${esc(d.result)}` : ''}` : 'Drive in progress'}</span><i class="xr-caret">${shut ? '+' : '−'}</i></button>
+            ${shut ? '' : d.shown.slice().reverse().map(p => `<div class="xr-play${p.scoring ? ' score' : ''}"><span class="xr-pq">Q${esc(p.q)} ${esc(p.clock)}${p.down ? ` · ${esc(p.down)}` : ''}</span>
+                ${p.scoring ? `<span class="xr-pt"><b>${esc(p.score)}</b></span>` : `<span class="xr-ptype">${esc(p.type)}</span>`}<p title="${esc(p.text)}">${esc(p.text)}</p></div>`).join('')}</div>`; }).join('')}</div>`;
     }
 
     window.NFLPLUS = { events, games, box, card, feedsHtml, nextStart, bandHtml, boxHtml, fantasyHtml, scoreCardHtml, statsPaneHtml, playsHtml };

@@ -124,13 +124,40 @@
         const side = id => ({ id: Number(id), name: b.byId[id] ? b.byId[id].name : `#${id}`, total: total(Number(id)), live: live(Number(id)) });
         return { week, pairs: pairs.map(([x, y]) => ({ a: side(x), b: side(y) })) };
     }
+    // every manager's roster for the week: espn id -> { owner, name, slot } (Top Contributors: whose player it is)
+    const holders = {};
+    function rostered(season, week) {
+        const k = `${season}-${week}`;
+        return holders[k] = holders[k] || (async () => {
+            const rows = await GT.query(`SELECT fr.owner_id AS owner, frp.player_id AS id, frp.slot_position AS slot
+                FROM fantasy_rosters fr JOIN fantasy_roster_players frp ON frp.roster_id = fr.roster_id
+                WHERE fr.season = $s AND fr.week = (SELECT MAX(week) FROM fantasy_rosters WHERE season = $s AND week <= $w)`, { $s: season, $w: week });
+            const b = await GT.load();
+            return Object.fromEntries(rows.map(r => [String(r.id), { owner: Number(r.owner), name: b.byId[r.owner] ? b.byId[r.owner].name : `#${r.owner}`, slot: r.slot }]));
+        })();
+    }
+    // Top Contributors: the game's ten best by league scoring (players, D/STs and coaches alike) and which manager has each
+    function topHtml(fp, held, mine = []) {
+        const how = l => l.lines.map(x => `${x.label}${/^(\d|Avg|Win|Loss)/.test(x.label) ? '' : ` ${Number.isInteger(x.qty) ? x.qty : x.qty.toFixed(1)}`}`).join(' · ');
+        const all = [...fp.players.map(p => ({ id: p.id, name: p.full || p.name, team: p.team, pts: p.pts, how: how(p) })),
+                     ...fp.teams.flatMap(t => [{ id: -(16000 + Number(t.id)), name: `${t.abbr} D/ST`, team: t.abbr, pts: t.dst.pts, how: how(t.dst) },
+                                               { id: -(14000 + Number(t.id)), name: `${t.abbr} Coach`, team: t.abbr, pts: t.hc.pts, how: how(t.hc) }])];
+        const top = all.filter(p => p.pts).sort((x, y) => y.pts - x.pts).slice(0, 10);
+        if (!top.length) return '<p class="np-empty">No fantasy points in this game yet.</p>';
+        return `<div class="wm-team wm-top"><div class="wm-team-h"><b>Top contributors</b><span>League scoring · this game</span></div>${top.map((p, i) => {
+            const h = held[String(p.id)], who = h ? `${esc(h.name)} · ${h.slot === 'BE' ? 'bench' : h.slot === 'IR' ? 'IR' : esc(h.slot)}` : 'Free agent';
+            return `<div class="wm-row wm-trow${h && mine.includes(h.owner) ? ' mine' : ''}"><span class="wm-rank">${i + 1}</span>
+                <span class="fp-shot"><img src="${headshot(p)}" alt="" onerror="this.src='${SITE.url('assets/nfl-logos/nfl.png')}';this.onerror=null"></span>
+                <span class="fp-who"><b>${esc(p.name)}</b><small>${esc(p.team)} · ${who}</small><em>${esc(p.how)}</em></span>
+                <span class="fp-num">${f2(p.pts)}</span></div>`; }).join('')}</div>`;
+    }
     // the tape: a label, then every matchup (yours first), twice over so the scroll loops without a seam
     function tapeHtml(L, myId) {
         if (!L || !L.pairs.length) return '';
         const mine = p => myId && (p.a.id === myId || p.b.id === myId);
         const list = L.pairs.slice().sort((x, y) => mine(y) - mine(x));
         const item = p => { const lead = p.a.total === p.b.total ? '' : p.a.total > p.b.total ? 'a' : 'b';
-            return `<span class="w-ti${mine(p) ? ' mine' : ''}${p.a.live || p.b.live ? ' live' : ''}"><img src="${GT.logo(p.a.name)}" alt=""><span class="${lead === 'a' ? 'lead' : ''}">${esc(p.a.name)} <b>${f2(p.a.total)}</b></span>
+            return `<span class="w-ti${mine(p) ? ' mine' : ''}"><img src="${GT.logo(p.a.name)}" alt=""><span class="${lead === 'a' ? 'lead' : ''}">${esc(p.a.name)} <b>${f2(p.a.total)}</b></span>
                 <i>–</i><span class="${lead === 'b' ? 'lead' : ''}"><b>${f2(p.b.total)}</b> ${esc(p.b.name)}</span><img src="${GT.logo(p.b.name)}" alt=""></span>`; };
         const run = list.map(item).join('<span class="w-tsep">•</span>');
         return `<span class="w-tlabel">Week ${L.week} fantasy</span><div class="w-tview"><div class="w-ttrack" style="--dur:${Math.max(30, list.length * 7)}s">${run}<span class="w-tsep">•</span>${run}<span class="w-tsep">•</span></div></div>`;
@@ -194,5 +221,5 @@
                 <tr class="gc-total"><td colspan="5"></td><td class="num">${f2(benchTotal(s.me))}</td><td class="gc-arw"></td><td class="gc-slot">Bench</td><td class="gc-arw"></td><td class="num">${f2(benchTotal(s.opp))}</td><td colspan="5"></td></tr></tbody></table></div>` : ''}`;
     }
 
-    window.WMATCH = { load, score, league, tapeHtml, boardHtml, inGameHtml, rostersHtml };
+    window.WMATCH = { load, score, league, rostered, topHtml, tapeHtml, boardHtml, inGameHtml, rostersHtml };
 })();

@@ -59,7 +59,8 @@
                     meta: manager ? [dayText, m && m.opp ? `Week ${m.week} · vs ${esc(m.opp.name)}` : 'Live fantasy'] : ['Members only', "Today and tomorrow's games"] });
         document.getElementById('watch-lockbtn').addEventListener('click', () => { WATCH.stop(); WATCH.forget(); conn = null; exitFull(); showLock(); });
 
-        const XTABS = manager ? [['stats', 'Stats'], ['fantasy', 'Fantasy'], ['plays', 'Plays']] : [['stats', 'Stats'], ['plays', 'Plays'], ['games', 'Games']];
+        const XTABS = manager ? [['stats', 'Stats'], ['fantasy', 'Fantasy'], ['top', 'Top Contributors'], ['plays', 'Plays']]
+            : [['stats', 'Stats'], ['top', 'Top Contributors'], ['plays', 'Plays'], ['games', 'Games']];
         content.innerHTML = `<div class="wrap page-pad">
             <section class="w-head${manager ? '' : ' solo'}" id="w-head"><div class="w-bugwrap" id="w-bugwrap"><div class="w-bug game-band" id="w-band"></div></div>${manager ? '<div class="w-mscore" id="w-mscore"></div>' : ''}</section>
             <div class="w-watch" id="w-watch">
@@ -95,6 +96,8 @@
         const chev = () => { $('w-chev').textContent = wrap.classList.contains('w-hide') ? '‹' : '›'; };
         $('w-chev').addEventListener('click', () => { wrap.classList.toggle('w-hide'); chev(); });
         let xtab = XTABS[0][0], side = 0;
+        const folded = new Set();   // the drives collapsed in Plays (kept while the page is open)
+        let held = null, heldWeek = null;   // Top Contributors: every manager's roster for the game's week
         // plays show ~15 s after they happen (the video plays ~12 s behind live); re-check every 3 s while the tab is open
         const PLAY_DELAY = 15000;
         const playsTick = setInterval(() => { if (!document.body.contains(pane)) return clearInterval(playsTick); if (xtab === 'plays') drawPane(); }, 3000);
@@ -134,9 +137,19 @@
             const game = current(), b2 = boxData && game && game.event && boxData.id === game.event.id ? boxData : null;
             const nav = list.length > 1 ? `<div class="xr-nav">${stepHtml('xr-step')}<span>${countText()}</span>${stepNext('xr-step')}</div>` : '';
             pane.innerHTML = xtab === 'stats' ? (game ? nav + NFLPLUS.statsPaneHtml(game, b2, side) : '<p class="np-empty">No game on screen.</p>')
-                : xtab === 'plays' ? NFLPLUS.playsHtml(b2, PLAY_DELAY)
+                : xtab === 'plays' ? NFLPLUS.playsHtml(b2, PLAY_DELAY, folded)
+                : xtab === 'top' ? topPane(b2)
                 : xtab === 'fantasy' ? (score ? `<div class="xr-card">${WMATCH.boardHtml(m, score, liveNow())}</div>${WMATCH.inGameHtml(score)}` : '<div class="loading">Scoring the matchup...</div>')
                 : cardsHtml();
+        }
+        // the game's ten best by league scoring, each with the manager who has him (the week's rosters load once)
+        function topPane(b2) {
+            if (!b2 || b2.state === 'pre') return '<p class="np-empty">Top contributors appear at kickoff.</p>';
+            const week = (b2.raw.header && b2.raw.header.week) || (m && m.week);
+            if (heldWeek !== week) { heldWeek = week; held = null;
+                WMATCH.rostered(season, week).then(h => { held = h; if (xtab === 'top') drawPane(); }).catch(() => { held = {}; if (xtab === 'top') drawPane(); }); }
+            if (!held) return '<div class="loading">Loading every roster...</div>';
+            return WMATCH.topHtml(LIVEFP.score(b2.raw, rules), held, manager ? [Number(who.owner)] : []);
         }
         function drawBelow() {
             if (!manager) {
@@ -209,6 +222,9 @@
         });
         pane.addEventListener('click', e => {
             const t = e.target.closest('[data-side]'); if (t) { side = Number(t.dataset.side); drawPane(); return; }
+            const d = e.target.closest('[data-drive]'); if (d) { const k = d.dataset.drive; if (folded.has(k)) folded.delete(k); else folded.add(k); drawPane(); return; }
+            const f = e.target.closest('[data-fold]');
+            if (f) { if (f.dataset.fold === 'open') folded.clear(); else pane.querySelectorAll('[data-drive]').forEach(x => folded.add(x.dataset.drive)); drawPane(); return; }
             const s = e.target.closest('[data-step]'); if (s) step(Number(s.dataset.step)); else pick(e);
         });
         $('w-bugwrap').addEventListener('click', e => { const s = e.target.closest('[data-step]'); if (s) step(Number(s.dataset.step)); });
