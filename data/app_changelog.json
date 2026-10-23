@@ -2,6 +2,12 @@
   "_about": "What changed in each Android app version; shown on pages/app.html. update_and_push.py --release --notes adds new entries.",
   "releases": [
     {
+      "version": "2.0.2",
+      "notes": [
+        "Watch: matchup scores hold a fixed width, right-aligned"
+      ]
+    },
+    {
       "version": "2.0.1",
       "notes": [
         "Watch: members-only live NFL+ games with your matchup, projections and win odds",

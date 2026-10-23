@@ -1949,30 +1949,37 @@ a.ap-row:hover{background:var(--hover)}
 .w-xray .wm-team-h{margin-bottom:2px}
 .wm-pts{color:var(--ink)}
 
-/* matchup line: equal room either side of the divider between the two managers */
-.wm-board .wm-side{padding-right:12px}
-.wm-board .wm-side + .wm-side{padding-left:12px;padding-right:0}
+/* matchup line (the phone's one-line layout only): equal room either side of the divider between the two managers */
+@media (max-width:760px){ .wm-board .wm-side{padding-right:12px} .wm-board .wm-side + .wm-side{padding-left:12px;padding-right:0} }
 @media (orientation:landscape) and (max-height:500px){ .wm-board .wm-side,.wm-board .wm-side + .wm-side{padding-left:0;padding-right:0} }
 .w-xray .wm-board .wm-side,.w-xray .wm-board .wm-side + .wm-side{padding-left:0;padding-right:0}
+/* matchup scores: one fixed width with room for 999.99, the number right-aligned, so the boxes never resize as scores change */
+.wm-side{grid-template-columns:40px minmax(0,1fr) auto}
+.wm-pts{display:block;width:calc(6ch + 22px);padding:0 10px;line-height:42px;text-align:right;justify-self:end;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:760px), (orientation:landscape) and (max-height:500px){ .wm-side{grid-template-columns:22px minmax(0,1fr) auto} .wm-pts{line-height:1.2;padding:0;width:calc(6ch + 4px)} }
+.w-xray .wm-side{grid-template-columns:28px minmax(0,1fr) auto}
+.w-xray .wm-pts{min-width:0;width:calc(6ch + 18px);line-height:32px}
 
 /* Watch ticker tape (desktop and full screen): every matchup of the week with live fantasy scores, scrolling under the
    video; yours first and highlighted, live ones marked; hover pauses it. Full screen: across the bottom of the screen */
-.w-tape{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;height:36px;background:#0d1117;color:#e8e8e8;overflow:hidden;border-top:1px solid #000}
+.w-tape{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;height:42px;background:#0d1117;color:#e8e8e8;overflow:hidden;border-top:1px solid #000}
 .w-tape:empty{display:none}
-.w-tlabel{height:36px;display:flex;align-items:center;padding:0 14px;background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
-.w-tview{overflow:hidden;height:36px;mask-image:linear-gradient(90deg,transparent 0,#000 24px,#000 calc(100% - 24px),transparent 100%)}
-.w-ttrack{display:flex;align-items:center;height:36px;width:max-content;animation:w-tape var(--dur,60s) linear infinite}
+.w-tlabel{height:42px;display:flex;align-items:center;padding:0 18px;background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.w-tview{overflow:hidden;height:42px;mask-image:linear-gradient(90deg,transparent 0,#000 24px,#000 calc(100% - 24px),transparent 100%)}
+.w-ttrack{display:flex;align-items:center;height:42px;width:max-content;animation:w-tape var(--dur,60s) linear infinite}
 .w-tape:hover .w-ttrack{animation-play-state:paused}
 @keyframes w-tape{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-.w-ti{display:inline-flex;align-items:center;gap:8px;padding:0 14px;font-size:13px;white-space:nowrap;color:#b9bec6}
-.w-ti img{width:20px;height:20px;object-fit:contain}
-.w-ti b{font-family:var(--display);font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+/* each matchup: logo, name + score, dash, score + name, logo — every piece centred on the middle line, not the text baseline (the two fonts sit differently) */
+.w-ti{display:inline-flex;align-items:center;gap:12px;height:42px;padding:0 22px;font-size:13px;line-height:1;white-space:nowrap;color:#b9bec6}
+.w-ti > span{display:inline-flex;align-items:center;gap:8px;height:42px}
+.w-ti img{width:22px;height:22px;object-fit:contain;display:block}
+.w-ti b{display:block;font-family:var(--display);font-weight:800;font-size:16px;line-height:1;font-variant-numeric:tabular-nums}
 .w-ti .lead{color:#fff}
 .w-ti .lead b{color:#f2b934}
-.w-ti i{font-style:normal;color:#6b7280}
-.w-ti.mine{background:rgba(242,185,52,.14);height:36px}
+.w-ti i{display:block;font-style:normal;line-height:1;color:#6b7280}
+.w-ti.mine{background:rgba(242,185,52,.14)}
 .w-ti.live::before{content:'';width:6px;height:6px;border-radius:50%;background:#e5484d;margin-right:2px}
-.w-tsep{color:#3b4250;font-size:10px}
+.w-tsep{color:#3b4250;font-size:10px;line-height:1}
 @media (max-width:1100px){ .w-tape{display:none} }
 .w-watch:fullscreen .w-tape,.w-watch.w-fs .w-tape{display:grid;position:absolute;left:0;right:0;bottom:0;z-index:6}
 .w-watch:fullscreen,.w-watch.w-fs{padding-bottom:44px}
@@ -1980,8 +1987,8 @@ a.ap-row:hover{background:var(--hover)}
 @media (orientation:landscape) and (max-height:500px){
     .w-watch:fullscreen,.w-watch.w-fs{padding-bottom:0}
     .w-watch:fullscreen video,.w-watch.w-fs video{height:calc(100vh - 80px)}
-    .w-watch:fullscreen .w-bar,.w-watch.w-fs .w-bar{position:absolute;left:0;right:0;bottom:36px}
-    .w-watch:fullscreen .w-xray,.w-watch.w-fs .w-xray{bottom:88px}
+    .w-watch:fullscreen .w-bar,.w-watch.w-fs .w-bar{position:absolute;left:0;right:0;bottom:42px}
+    .w-watch:fullscreen .w-xray,.w-watch.w-fs .w-xray{bottom:94px}
 }
 /* the full-screen panel scrolls; its sections keep their height */
 .xr-pane > *{flex-shrink:0}
