@@ -91,13 +91,33 @@
         const ch = conn.channels.find(c => String(c.number) === String(number));
         if (!ch) throw new Error(`Channel ${number} isn't set up`);
         if (!window.mpegts || !mpegts.isSupported()) throw new Error("This browser can't play live streams");
+        // never skip ahead to chase the live edge (that skip is the "catching up" jump); keep a large stash instead
         const ts = mpegts.createPlayer({ type: 'mpegts', isLive: true, url: ch.url },
-                                       { enableStashBuffer: false, liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 6, lazyLoad: false });
+                                       { enableStashBuffer: true, stashInitialSize: 2 * 1024 * 1024, liveBufferLatencyChasing: false, lazyLoad: false,
+                                         autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 60, autoCleanupMinBackwardDuration: 30 });
         const mine = playing = { video, ts };
+        // a cushion, built in the background: start once START seconds are buffered; while playing, if the buffer ahead
+        // drops under LOW, play at SLOW speed (pitch kept) until it's back over HIGH, so a dip refills without a pause.
+        // Only an empty buffer (a real stall) pauses, to refill to START
+        const START = 12, LOW = 8, HIGH = 15, SLOW = 0.95;
+        const ahead = () => { const b = video.buffered; return b.length ? b.end(b.length - 1) - video.currentTime : 0; };
+        let filling = true;
+        mine.cushion = setInterval(() => {
+            if (playing !== mine) return clearInterval(mine.cushion);
+            const a = ahead();
+            if (filling) {
+                if (a >= START) { filling = false; video.playbackRate = 1; video.play().catch(() => { /* autoplay blocked: the controls' play button starts it */ }); }
+                return;
+            }
+            if (a < LOW && video.playbackRate !== SLOW) video.playbackRate = SLOW;
+            else if (a > HIGH && video.playbackRate !== 1) video.playbackRate = 1;
+        }, 500);
+        mine.onWait = () => { if (playing === mine && video.currentTime > 0 && ahead() < 0.5) { filling = true; video.pause(); } };
+        video.addEventListener('waiting', mine.onWait);
         // the relay refuses a channel outside its program (403), and Dispatcharr sends no video while a feed is idle
         const offAir = () => report(video, 'Off the air', 'Nothing is on this channel right now. Check back at game time.');
-        const timer = setTimeout(() => { if (playing === mine && !video.currentTime) { stop(); offAir(); } }, 20000);
-        video.addEventListener('playing', () => clearTimeout(timer), { once: true });
+        const timer = setTimeout(() => { if (playing === mine && !video.buffered.length) { stop(); offAir(); } }, 20000);
+        video.addEventListener('progress', () => { if (video.buffered.length) clearTimeout(timer); });
         ts.on(mpegts.Events.ERROR, () => {
             if (playing !== mine) return;
             clearTimeout(timer);
@@ -106,14 +126,16 @@
             if (started) report(video, 'Stream stopped', 'Pick the game again to retry.'); else offAir();
         });
         ts.attachMediaElement(video);
-        ts.load();
-        video.play().catch(() => { /* autoplay blocked: the controls' play button starts it */ });
+        ts.load();                                        // playback starts once the cushion is buffered (above)
     }
     // closing the connection is how Dispatcharr knows the viewer left
     function stop() {
         const p = playing;
         playing = null;
         if (!p) return;
+        clearInterval(p.cushion);
+        p.video.removeEventListener('waiting', p.onWait);
+        p.video.playbackRate = 1;
         p.ts.unload(); p.ts.detachMediaElement(); p.ts.destroy();
         p.video.pause(); p.video.removeAttribute('src'); p.video.load();
     }
