@@ -2,6 +2,16 @@
   "_about": "What changed in each Android app version; shown on pages/app.html. update_and_push.py --release --notes adds new entries.",
   "releases": [
     {
+      "version": "2.0.1",
+      "notes": [
+        "Watch: members-only live NFL+ games with your matchup, projections and win odds",
+        "Fantasy play ticker: every play's fantasy points for your matchup",
+        "Your team setting under More decides whose matchup Watch shows",
+        "Back gesture now goes back a screen instead of closing the app",
+        "Shorter Home headline line"
+      ]
+    },
+    {
       "version": "2.0.0",
       "notes": [
         "Rebuilt to match the website: photo headers, the site's Featured Games hero and stat tiles",

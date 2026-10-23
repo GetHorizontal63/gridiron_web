@@ -77,19 +77,26 @@
     const TEAM_STATS = [['Total Yards', 'Total yards'], ['Passing', 'Passing yards'], ['Rushing', 'Rushing yards'], ['1st Downs', 'First downs'],
                         ['3rd down efficiency', '3rd down'], ['4th down efficiency', '4th down'], ['Red Zone (Made-Att)', 'Red zone'],
                         ['Turnovers', 'Turnovers'], ['Sacks-Yards Lost', 'Sacks-yards'], ['Penalties', 'Penalties'], ['Possession', 'Possession']];
-    const PLAYER_GROUPS = [['passing', 'Passing', ['C/ATT', 'YDS', 'TD', 'INT']], ['rushing', 'Rushing', ['CAR', 'YDS', 'TD', 'LONG']],
-                           ['receiving', 'Receiving', ['REC', 'YDS', 'TD', 'TGTS']]];
     async function box(id) {
         const s = await getJson(`${API}summary?event=${id}`);
         const comp = s.header.competitions[0];
         const teams = ['away', 'home'].map(side => team(comp.competitors.find(x => x.homeAway === side)));
         const stats = Object.fromEntries((s.boxscore?.teams || []).map(t => [t.team.id, Object.fromEntries((t.statistics || []).map(x => [x.label, x.displayValue]))]));
         const players = Object.fromEntries((s.boxscore?.players || []).map(p => [p.team.id, Object.fromEntries(p.statistics.map(g => [g.name, {
-            labels: g.labels, rows: g.athletes.map(a => ({ name: a.athlete.shortName || a.athlete.displayName, stats: a.stats }))
+            labels: g.labels, totals: g.totals || null,
+            rows: g.athletes.map(a => ({ name: a.athlete.shortName || a.athlete.displayName, full: a.athlete.displayName, stats: a.stats }))
         }]))]));
+        // every drive and play; wallclock (when it happened) lets the plays panel stay behind the delayed video
+        const driveList = [...(s.drives?.previous || []), ...(s.drives?.current && !(s.drives.previous || []).some(d => d.id === s.drives.current.id) ? [s.drives.current] : [])];
+        const drives = driveList.map(d => ({
+            id: d.id, team: d.team?.abbreviation || '', desc: d.description || '', result: d.displayResult || '', score: !!d.isScore,
+            plays: (d.plays || []).map(p => ({ id: p.id, q: p.period?.number, clock: p.clock?.displayValue || '', down: p.start?.downDistanceText || '',
+                                                 type: p.type?.text || '', text: p.text || '', scoring: !!p.scoringPlay, wall: p.wallclock ? Date.parse(p.wallclock) : 0,
+                                                 score: `${p.awayScore ?? ''}-${p.homeScore ?? ''}` }))
+        }));
         const st = comp.status;
         return {
-            id, raw: s, state: st.type.state, detail: st.type.shortDetail, date: comp.date, teams, stats, players,
+            id, raw: s, state: st.type.state, detail: st.type.shortDetail, date: comp.date, teams, stats, players, drives,
             networks: [...new Set((comp.broadcasts || []).map(b => b.media?.shortName).filter(Boolean))],
             scoring: (s.scoringPlays || []).map(p => ({ q: p.period?.number, clock: p.clock?.displayValue || '', team: p.team?.abbreviation || '',
                                                          text: p.text, score: `${p.awayScore}-${p.homeScore}` }))
@@ -111,8 +118,16 @@
             <div class="gc-foot">${sit} · ${game.feeds.map(f => `${esc(f.name === 'Watch' ? 'Ch' : f.name)} ${esc(f.channel)}`).join(' · ')}</div></div>`;
     }
     // the player bar's buttons: one per feed of the game on screen, greyed until the relay opens its window
-    const feedsHtml = game => (game ? game.feeds : []).map((f, i) => `<button class="np-feed${i ? ' alt' : ''}" type="button" data-ch="${esc(f.channel)}"${f.open ? '' : ' disabled'}
-        title="${esc(f.title || game.title)} · channel ${esc(f.channel)}${f.open ? '' : ` · opens before ${esc(time(f.start))}`}">${esc(f.name)}<small>${esc(f.channel)}</small></button>`).join('');
+    // a feed has a stream only while the relay has its window open AND its program has started (before kickoff EPlusTV
+    // has nothing to send); `active` is the feed being watched ({ key, ch }), the only one drawn selected
+    const live = f => f.open && Date.now() >= new Date(f.start).getTime();
+    const feedsHtml = (game, active) => (game ? game.feeds : []).map(f => {
+        const on = live(f), sel = on && active && active.key === game.key && String(active.ch) === String(f.channel);
+        return `<button class="np-feed${sel ? ' on' : ''}" type="button" data-ch="${esc(f.channel)}"${on ? '' : ' disabled'} aria-pressed="${sel ? 'true' : 'false'}"
+            title="${esc(f.title || game.title)} · channel ${esc(f.channel)}${on ? '' : ` · available at ${esc(time(f.start))}`}">${esc(f.name)}<small>${on ? esc(f.channel) : esc(time(f.start))}</small></button>`;
+    }).join('');
+    // when the next feed becomes available (ms from now), so the page can refresh right then; null if none is waiting
+    const nextStart = list => { const t = list.flatMap(g => g.feeds).map(f => new Date(f.start).getTime()).filter(x => x > Date.now()); return t.length ? Math.min(...t) - Date.now() : null; };
     // the game on screen as Game Center's header band: status pill, both teams, the score
     function bandHtml(game) {
         const g = game && game.event;
@@ -130,46 +145,51 @@
 
     // fantasy points (LIVEFP.score), one table per team: D/ST and coach first, then players by points
     // "Pass yds 274 +19.18", "Rec 6 +6"; tier lines already carry their number ("10 pts allowed +3", "Win by 7 +1")
-    const howLine = l => `${l.label}${/^(\d|Avg|Win|Loss)/.test(l.label) ? '' : ` ${Number.isInteger(l.qty) ? l.qty : l.qty.toFixed(1)}`} ${l.pts > 0 ? '+' : ''}${l.pts}`;
+    const f2 = v => (Math.round((Number(v) || 0) * 100) / 100).toFixed(2);
+    const howLine = l => `${l.label}${/^(\d|Avg|Win|Loss)/.test(l.label) ? '' : ` ${Number.isInteger(l.qty) ? l.qty : l.qty.toFixed(1)}`} ${l.pts > 0 ? '+' : ''}${f2(l.pts)}`;
     function fantasyHtml(b, fp) {
         if (!fp) return '';
         const one = t => {
             const rows = [{ name: `${t.abbr} D/ST`, ...t.dst }, { name: `${t.abbr} Coach`, ...t.hc },
                           ...fp.players.filter(p => p.teamId === t.id).sort((x, y) => y.pts - x.pts)];
-            return `<table class="np-table np-fp">${cols('34%', '48%', '18%')}<thead><tr><th>${esc(t.abbr)} fantasy</th><th>Scoring</th><th class="num">Pts</th></tr></thead>
+            return `<div class="table-scroll"><table class="np-table np-fp np-wide">${cols('24%', '64%', '12%')}<thead><tr><th><span class="np-tcell"><img src="${logo(t.abbr)}" alt="">${esc(t.name || t.abbr)}</span></th><th>Scoring</th><th class="num">Pts</th></tr></thead>
                 <tbody>${rows.map(r => { const how = r.lines.map(howLine).join(' · ');
-                    return `<tr><td title="${esc(r.full || r.name)}">${esc(r.name)}</td><td title="${esc(how)}">${esc(how) || '<span class="np-dim">-</span>'}</td><td class="num"><b>${r.pts}</b></td></tr>`; }).join('')}</tbody></table>`;
+                    return `<tr><td title="${esc(r.full || r.name)}">${esc(r.name)}</td><td title="${esc(how)}">${esc(how) || '<span class="np-dim">-</span>'}</td><td class="num"><b>${f2(r.pts)}</b></td></tr>`; }).join('')}</tbody></table></div>`;
         };
         const byId = Object.fromEntries(fp.teams.map(t => [t.id, t]));
-        return `<div class="np-pair">${b.teams.map(t => byId[t.id] ? one(byId[t.id]) : '').join('')}</div>`;
+        return `<div class="np-stack">${b.teams.map(t => byId[t.id] ? one(byId[t.id]) : '').join('')}</div>`;
     }
 
+    // every ESPN box score category, in ESPN's order
+    const GROUPS = [['passing', 'Passing'], ['rushing', 'Rushing'], ['receiving', 'Receiving'], ['fumbles', 'Fumbles'], ['defensive', 'Defense'],
+                    ['interceptions', 'Interceptions'], ['kickReturns', 'Kick returns'], ['puntReturns', 'Punt returns'], ['kicking', 'Kicking'], ['punting', 'Punting']];
+    // one category as a full-width table: a header row per team, its players, its totals; first column 26%, the rest even
+    function groupTable(b, key, title, teams) {
+        const parts = teams.map(t => ({ t, g: (b.players[t.id] || {})[key] })).filter(x => x.g && x.g.rows.length);
+        if (!parts.length) return '';
+        const labels = parts[0].g.labels, w = `${(74 / labels.length).toFixed(2)}%`;
+        const body = parts.map(({ t, g }) => `${teams.length > 1 ? `<tr class="np-teamrow"><td colspan="${labels.length + 1}"><span class="np-tcell"><img src="${logo(t.abbr)}" alt="">${esc(t.name)}</span></td></tr>` : ''}
+            ${g.rows.map(r => `<tr><td title="${esc(r.full || r.name)}">${esc(r.name)}</td>${labels.map((_, i) => `<td class="num">${esc(r.stats[i] ?? '-')}</td>`).join('')}</tr>`).join('')}
+            ${g.totals ? `<tr class="np-total"><td>${esc(t.abbr)} total</td>${labels.map((_, i) => `<td class="num">${esc(g.totals[i] ?? '')}</td>`).join('')}</tr>` : ''}`).join('');
+        return `<div class="table-scroll"><table class="np-table np-wide">${cols('26%', ...labels.map(() => w))}
+            <thead><tr><th>${title}</th>${labels.map(l => `<th class="num">${esc(l)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+    }
     function boxHtml(meta, b, fp) {
         const [A, H] = b.teams;
         if (b.state === 'pre') return `<div class="np-box"><p class="np-empty">Kickoff ${esc(kickoff(b.date))}${b.networks.length ? ` · ${esc(b.networks.join(' · '))}` : ''}. The box score starts at kickoff.</p></div>`;
-        const n = Math.max(4, A.lines.length, H.lines.length);
-        const qs = Array.from({ length: n }, (_, i) => i < 4 ? String(i + 1) : n === 5 ? 'OT' : `OT${i - 3}`);
-        const qw = `${Math.floor(56 / (n + 1))}%`;
-        const lines = `<table class="np-table">${cols('44%', ...qs.map(() => qw), qw)}<thead><tr><th>Team</th>${qs.map(q => `<th class="num">${q}</th>`).join('')}<th class="num">T</th></tr></thead>
-            <tbody>${b.teams.map(t => `<tr><td><span class="np-tcell"><img src="${logo(t.abbr)}" alt="">${esc(t.abbr)}</span></td>
-                ${qs.map((_, i) => `<td class="num">${esc(t.lines[i] ?? '')}</td>`).join('')}<td class="num"><b>${esc(t.score ?? '')}</b></td></tr>`).join('')}</tbody></table>`;
         const sa = b.stats[A.id] || {}, sh = b.stats[H.id] || {};
-        const teamStats = `<table class="np-table">${cols('46%', '27%', '27%')}<thead><tr><th>Team stats</th><th class="num">${esc(A.abbr)}</th><th class="num">${esc(H.abbr)}</th></tr></thead>
-            <tbody>${TEAM_STATS.filter(([k]) => sa[k] != null || sh[k] != null).map(([k, label]) => `<tr><td>${label}</td><td class="num">${esc(sa[k] ?? '-')}</td><td class="num">${esc(sh[k] ?? '-')}</td></tr>`).join('')}</tbody></table>`;
-        const groupTable = (t, key, title, want) => {
-            const g = (b.players[t.id] || {})[key];
-            if (!g || !g.rows.length) return '';
-            const idx = want.map(l => g.labels.indexOf(l));
-            const w = `${Math.floor(56 / want.length)}%`;
-            return `<table class="np-table">${cols('44%', ...want.map(() => w))}<thead><tr><th>${esc(t.abbr)} ${title}</th>${want.map(l => `<th class="num">${l}</th>`).join('')}</tr></thead>
-                <tbody>${g.rows.slice(0, 5).map(r => `<tr><td title="${esc(r.name)}">${esc(r.name)}</td>${idx.map(i => `<td class="num">${esc(i >= 0 ? r.stats[i] : '-')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-        };
-        const playerTables = PLAYER_GROUPS.map(([key, title, want]) => `<div class="np-pair">${groupTable(A, key, title, want)}${groupTable(H, key, title, want)}</div>`).join('');
-        const scoring = b.scoring.length ? `<table class="np-table np-scoring">${cols('9%', '13%', '11%', '53%', '14%')}<thead><tr><th>Q</th><th>Time</th><th>Team</th><th>Scoring play</th><th class="num">${esc(A.abbr)}-${esc(H.abbr)}</th></tr></thead>
-            <tbody>${b.scoring.map(p => `<tr><td>${esc(p.q)}</td><td>${esc(p.clock)}</td><td>${esc(p.team)}</td><td title="${esc(p.text)}">${esc(p.text)}</td><td class="num">${esc(p.score)}</td></tr>`).join('')}</tbody></table>` : '';
-        return `<div class="np-box"><h3 class="np-sub">Scoring</h3><div class="np-grid"><div>${lines}${teamStats}</div><div>${scoring || '<p class="np-empty">No scoring yet.</p>'}</div></div>
+        const teamStats = `<div class="table-scroll"><table class="np-table np-wide np-teamstats">${cols('40%', '30%', '30%')}
+            <thead><tr><th>Team stats</th><th class="num"><span class="np-tcell r"><img src="${logo(A.abbr)}" alt="">${esc(A.abbr)}</span></th><th class="num"><span class="np-tcell r"><img src="${logo(H.abbr)}" alt="">${esc(H.abbr)}</span></th></tr></thead>
+            <tbody>${TEAM_STATS.filter(([k]) => sa[k] != null || sh[k] != null).map(([k, label]) => `<tr><td>${label}</td><td class="num">${esc(sa[k] ?? '-')}</td><td class="num">${esc(sh[k] ?? '-')}</td></tr>`).join('')}</tbody></table></div>`;
+        const scoring = b.scoring.length ? `<div class="table-scroll"><table class="np-table np-wide">${cols('6%', '9%', '9%', '64%', '12%')}
+            <thead><tr><th>Q</th><th>Time</th><th>Team</th><th>Scoring play</th><th class="num">${esc(A.abbr)}-${esc(H.abbr)}</th></tr></thead>
+            <tbody>${b.scoring.map(p => `<tr><td>${esc(p.q)}</td><td>${esc(p.clock)}</td><td><span class="np-tcell"><img src="${logo(p.team)}" alt="">${esc(p.team)}</span></td><td title="${esc(p.text)}">${esc(p.text)}</td><td class="num">${esc(p.score)}</td></tr>`).join('')}</tbody></table></div>`
+            : '<p class="np-empty">No scoring yet.</p>';
+        return `<div class="np-box">
+            <h3 class="np-sub">Team stats</h3>${teamStats}
+            <h3 class="np-sub">Scoring plays</h3>${scoring}
             <h3 class="np-sub">Fantasy points <small>league scoring, live from the box score</small></h3>${fantasyHtml(b, fp)}
-            <h3 class="np-sub">Box score</h3>${playerTables}</div>`;
+            <h3 class="np-sub">Box score</h3>${GROUPS.map(([key, title]) => groupTable(b, key, title, b.teams)).join('')}</div>`;
     }
 
     // ---------------------------------------------------------------- the full-screen panel (X-Ray style): Stats and Plays
@@ -192,24 +212,35 @@
                 <tbody>${[A, H].map((t, i) => `<tr><td><span class="np-tcell"><img src="${logo(t.abbr)}" alt="">${esc(t.abbr)}</span></td>
                     ${qs.map((_, k) => `<td class="num">${pre ? '-' : esc(t.lines[k] ?? '-')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
     }
-    // game leaders: each team's top passer, rusher and receiver (by yards)
-    const LEADERS = [['passing', 'Passing', ['YDS', 'TD', 'INT']], ['rushing', 'Rushing', ['CAR', 'YDS', 'TD']], ['receiving', 'Receiving', ['REC', 'YDS', 'TD']]];
-    function leadersHtml(b) {
-        if (!b || b.state === 'pre') return '<p class="np-empty">Leaders appear at kickoff.</p>';
-        return `<div class="xr-block"><h4>Game leaders</h4>${LEADERS.map(([key, title, want]) => {
-            const rows = b.teams.map(t => { const g = (b.players[t.id] || {})[key]; if (!g || !g.rows.length) return null;
-                const yi = g.labels.indexOf('YDS'), top = g.rows.slice().sort((x, y) => (parseFloat(y.stats[yi]) || 0) - (parseFloat(x.stats[yi]) || 0))[0];
-                return { t, name: top.name, vals: want.map(l => { const i = g.labels.indexOf(l); return i >= 0 ? top.stats[i] : '-'; }) }; }).filter(Boolean);
-            return rows.length ? `<table class="xr-table">${cols('52%', '16%', '16%', '16%')}<thead><tr><th>${title}</th>${want.map(l => `<th class="num">${l}</th>`).join('')}</tr></thead>
-                <tbody>${rows.map(r => `<tr><td><span class="np-tcell"><img src="${logo(r.t.abbr)}" alt="">${esc(r.name)}</span></td>${r.vals.map(v => `<td class="num">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
-        }).join('')}</div>`;
+    // the Stats tab: score card, a toggle between the two teams, then that team's team stats and every box score category
+    function statsPaneHtml(game, b, side = 0) {
+        const card = scoreCardHtml(game, b);
+        if (!b || b.state === 'pre') return `${card}<p class="np-empty">Stats appear at kickoff.</p>`;
+        const t = b.teams[side] || b.teams[0], st = b.stats[t.id] || {};
+        const toggle = `<div class="xr-toggle">${b.teams.map((x, i) => `<button type="button" data-side="${i}" class="${i === side ? 'on' : ''}"><img src="${logo(x.abbr)}" alt="">${esc(x.name)}</button>`).join('')}</div>`;
+        const teamStats = `<table class="xr-table">${cols('60%', '40%')}<thead><tr><th>Team stats</th><th class="num">${esc(t.abbr)}</th></tr></thead>
+            <tbody>${TEAM_STATS.filter(([k]) => st[k] != null).map(([k, label]) => `<tr><td>${label}</td><td class="num">${esc(st[k])}</td></tr>`).join('')}</tbody></table>`;
+        const groups = GROUPS.map(([key, title]) => { const g = (b.players[t.id] || {})[key]; if (!g || !g.rows.length) return '';
+            const w = `${Math.max(9, 60 / g.labels.length).toFixed(1)}%`;
+            return `<div class="xr-block"><h4>${title}</h4><div class="xr-scroll"><table class="xr-table xr-box" style="min-width:${Math.max(100, 40 + g.labels.length * 11)}%">${cols('40%', ...g.labels.map(() => w))}
+                <thead><tr><th></th>${g.labels.map(l => `<th class="num">${esc(l)}</th>`).join('')}</tr></thead>
+                <tbody>${g.rows.map(r => `<tr><td title="${esc(r.full || r.name)}">${esc(r.name)}</td>${g.labels.map((_, i) => `<td class="num">${esc(r.stats[i] ?? '-')}</td>`).join('')}</tr>`).join('')}
+                ${g.totals ? `<tr class="xr-total"><td>Total</td>${g.labels.map((_, i) => `<td class="num">${esc(g.totals[i] ?? '')}</td>`).join('')}</tr>` : ''}</tbody></table></div></div>`; }).join('');
+        return `${card}${toggle}<div class="xr-block">${teamStats}</div>${groups}`;
     }
-    // scoring plays, newest first
-    function playsHtml(b) {
-        if (!b || b.state === 'pre' || !b.scoring.length) return '<p class="np-empty">No scoring yet.</p>';
-        return `<div class="xr-plays">${b.scoring.slice().reverse().map(p => `<div class="xr-play"><span class="xr-pq">Q${esc(p.q)} · ${esc(p.clock)}</span>
-            <span class="xr-pt"><img src="${logo(p.team)}" alt=""><b>${esc(p.score)}</b></span><p title="${esc(p.text)}">${esc(p.text)}</p></div>`).join('')}</div>`;
+    // the Plays tab: every play, drive by drive, newest first. A play shows only `delay` ms after it happened (its
+    // wallclock), so the panel never runs ahead of the delayed video; a drive's result waits for its last play
+    function playsHtml(b, delay = 15000) {
+        if (!b || b.state === 'pre') return '<p class="np-empty">Plays appear at kickoff.</p>';
+        const cutoff = Date.now() - delay;
+        const drives = (b.drives || []).map(d => { const shown = d.plays.filter(p => !p.wall || p.wall <= cutoff);
+            return { ...d, shown, done: shown.length === d.plays.length }; }).filter(d => d.shown.length);
+        if (!drives.length) return '<p class="np-empty">No plays yet.</p>';
+        return `<div class="xr-plays">${drives.slice().reverse().map(d => `<div class="xr-drive">
+            <div class="xr-dhead"><img src="${logo(d.team)}" alt=""><b>${esc(d.team)}</b><span>${d.done ? `${esc(d.desc)}${d.result ? ` · ${esc(d.result)}` : ''}` : 'Drive in progress'}</span></div>
+            ${d.shown.slice().reverse().map(p => `<div class="xr-play${p.scoring ? ' score' : ''}"><span class="xr-pq">Q${esc(p.q)} ${esc(p.clock)}${p.down ? ` · ${esc(p.down)}` : ''}</span>
+                ${p.scoring ? `<span class="xr-pt"><b>${esc(p.score)}</b></span>` : `<span class="xr-ptype">${esc(p.type)}</span>`}<p title="${esc(p.text)}">${esc(p.text)}</p></div>`).join('')}</div>`).join('')}</div>`;
     }
 
-    window.NFLPLUS = { events, games, box, card, feedsHtml, bandHtml, boxHtml, fantasyHtml, scoreCardHtml, leadersHtml, playsHtml };
+    window.NFLPLUS = { events, games, box, card, feedsHtml, nextStart, bandHtml, boxHtml, fantasyHtml, scoreCardHtml, statsPaneHtml, playsHtml };
 })();

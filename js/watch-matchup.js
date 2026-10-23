@@ -10,7 +10,7 @@
     const API = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/';
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const getJson = url => fetch(url).then(r => { if (!r.ok) throw new Error(`ESPN answered ${r.status}`); return r.json(); });   // plain GET (see nflplus.js)
-    const f1 = v => (Math.round((v || 0) * 10) / 10).toFixed(1);
+    const f2 = v => (Math.round((v || 0) * 100) / 100).toFixed(2);   // fantasy points to the hundredth
     const STARTER = slot => slot !== 'BE' && slot !== 'IR';
     const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'D/ST', 'P', 'HC', 'BE', 'IR'];
 
@@ -62,7 +62,7 @@
         const d = await getJson(`${API}scoreboard?seasontype=${seasonType}&week=${week}`);
         const byTeam = {};
         (d.events || []).forEach(e => {
-            const c = e.competitions[0], g = { id: e.id, state: e.status.type.state, detail: e.status.type.shortDetail,
+            const c = e.competitions[0], g = { id: e.id, state: e.status.type.state, detail: e.status.type.shortDetail, period: e.status.period || 0, clock: e.status.displayClock || '', date: e.date,
                                                teams: c.competitors.map(x => ({ id: x.team.id, abbr: x.team.abbreviation })) };
             g.teams.forEach(t => { byTeam[t.abbr] = g; });
         });
@@ -97,6 +97,45 @@
         return { me: side(m.me), opp: side(m.opp) };
     }
 
+    // ---------------------------------------------------------------- the whole league: every matchup of the week, live
+    // (the ticker tape): each side's starters, scored from ESPN like the matchup above; finished games come from the cache
+    async function league(dateISO, season, rules, watched) {
+        const day = String(dateISO).replace(/-/g, '');
+        const [board, sched] = await Promise.all([getJson(`${API}scoreboard?dates=${day}`),
+                                                  fetch(SITE.url('data/schedule.json')).then(r => r.ok ? r.json() : null).catch(() => null)]);
+        const week = board.week && board.week.number, seasonType = board.season && board.season.type;
+        const pairs = sched && sched.weeks[String(week)];
+        if (!week || !pairs) return { week, pairs: [] };
+        const rows = await GT.query(`SELECT fr.owner_id AS owner, frp.player_id AS id, frp.slot_position AS slot, frp.pro_team AS team
+            FROM fantasy_rosters fr JOIN fantasy_roster_players frp ON frp.roster_id = fr.roster_id
+            WHERE fr.season = $s AND fr.week = (SELECT MAX(week) FROM fantasy_rosters WHERE season = $s AND week <= $w)`, { $s: season, $w: week });
+        const starters = rows.filter(r => STARTER(r.slot));
+        const games = await weekGames(week, seasonType);
+        if (watched) Object.values(games).forEach(g => { if (g.id === watched.id) g.state = watched.state; });
+        const ids = [...new Set(starters.map(p => games[p.team]).filter(g => g && g.state !== 'pre').map(g => g.id))];
+        const pts = {};
+        await Promise.all(ids.map(async id => {
+            const g = Object.values(games).find(x => x.id === id);
+            pts[id] = await gamePoints(id, g.state, rules, watched && watched.id === id && watched.raw ? watched.raw : null).catch(() => null);
+        }));
+        const total = owner => starters.filter(p => p.owner === owner).reduce((t, p) => { const g = games[p.team], r = g ? playerPoints(p, g, pts[g.id]) : null; return t + (r ? r.pts : 0); }, 0);
+        const live = owner => starters.some(p => p.owner === owner && games[p.team] && games[p.team].state === 'in');
+        const b = await GT.load();
+        const side = id => ({ id: Number(id), name: b.byId[id] ? b.byId[id].name : `#${id}`, total: total(Number(id)), live: live(Number(id)) });
+        return { week, pairs: pairs.map(([x, y]) => ({ a: side(x), b: side(y) })) };
+    }
+    // the tape: a label, then every matchup (yours first), twice over so the scroll loops without a seam
+    function tapeHtml(L, myId) {
+        if (!L || !L.pairs.length) return '';
+        const mine = p => myId && (p.a.id === myId || p.b.id === myId);
+        const list = L.pairs.slice().sort((x, y) => mine(y) - mine(x));
+        const item = p => { const lead = p.a.total === p.b.total ? '' : p.a.total > p.b.total ? 'a' : 'b';
+            return `<span class="w-ti${mine(p) ? ' mine' : ''}${p.a.live || p.b.live ? ' live' : ''}"><img src="${GT.logo(p.a.name)}" alt=""><span class="${lead === 'a' ? 'lead' : ''}">${esc(p.a.name)} <b>${f2(p.a.total)}</b></span>
+                <i>–</i><span class="${lead === 'b' ? 'lead' : ''}"><b>${f2(p.b.total)}</b> ${esc(p.b.name)}</span><img src="${GT.logo(p.b.name)}" alt=""></span>`; };
+        const run = list.map(item).join('<span class="w-tsep">•</span>');
+        return `<span class="w-tlabel">Week ${L.week} fantasy</span><div class="w-tview"><div class="w-ttrack" style="--dur:${Math.max(30, list.length * 7)}s">${run}<span class="w-tsep">•</span>${run}<span class="w-tsep">•</span></div></div>`;
+    }
+
     // ---------------------------------------------------------------- markup
     const headshot = p => p.id > 0 ? `https://a.espncdn.com/i/headshots/nfl/players/full/${p.id}.png` : SITE.url(`assets/nfl-logos/${String(p.team || 'nfl').toLowerCase()}.png`);
     const nflLogo = abbr => `<img class="gc-nfl" src="${SITE.url(`assets/nfl-logos/${String(abbr || 'nfl').toLowerCase()}.png`)}" alt="${esc(abbr || '')}" onerror="this.src='${SITE.url('assets/nfl-logos/nfl.png')}';this.onerror=null">`;
@@ -108,7 +147,7 @@
         const L = lead(s);
         const side = (t, mine, right) => `<div class="wm-side${right ? ' r' : ''}"><span class="sb-logo"><img src="${GT.logo(t.name)}" alt=""></span>
             <span class="wm-who"><b>${esc(t.name)}</b><small>${t.left} yet to play</small></span>
-            <span class="wm-pts${(L === 'me') === mine && L ? ' won' : ''}">${f1(t.total)}</span></div>`;
+            <span class="wm-pts${(L === 'me') === mine && L ? ' won' : ''}">${f2(t.total)}</span></div>`;
         return `<div class="band-label"><span class="pill ${live ? 'pill-accent' : 'pill-dark'}">${live ? 'Live' : 'Matchup'}</span>Week ${m.week} fantasy</div>
             <div class="wm-board">${side(s.me, true)}${side(s.opp, false, true)}</div>`;
     }
@@ -118,7 +157,7 @@
         <span class="fp-shot"><img src="${headshot(p)}" alt="" onerror="this.src='${SITE.url('assets/nfl-logos/nfl.png')}';this.onerror=null"></span>
         <span class="fp-who"><b>${esc(p.name)}</b><small>${esc(slotText(p))} · ${esc(p.team)}</small>
             <em>${esc(p.how) || (p.played ? 'No points yet' : 'Kickoff to come')}</em></span>
-        <span class="fp-num">${f1(p.pts)}</span></div>`;
+        <span class="fp-num">${f2(p.pts)}</span></div>`;
     function inGameHtml(s) {
         const block = t => `<div class="wm-team"><div class="wm-team-h"><img src="${GT.logo(t.name)}" alt=""><b>${esc(t.name)}</b><span>${t.inGame.filter(p => STARTER(p.slot)).length} starting in this game</span></div>
             ${t.inGame.length ? t.inGame.slice().sort((x, y) => (STARTER(y.slot) - STARTER(x.slot)) || y.pts - x.pts).map(row).join('') : '<p class="wm-none">Nobody in this game.</p>'}</div>`;
@@ -131,7 +170,7 @@
         const opp = p => p.game ? (p.game.teams.find(t => t.abbr !== p.team) || {}).abbr : '';
         const cells = (p, mine) => {
             const list = p ? [`<td class="gc-player" title="${esc(p.name)}">${esc(p.name)}</td>`, `<td>${esc(p.position)}</td>`, `<td>${nflLogo(p.team)}</td>`,
-                              `<td>${p.game ? nflLogo(opp(p)) : ''}</td>`, `<td class="wm-st${p.game && p.game.state === 'in' ? ' live' : ''}">${esc(status(p))}</td>`, `<td class="num strong">${f1(p.pts)}</td>`]
+                              `<td>${p.game ? nflLogo(opp(p)) : ''}</td>`, `<td class="wm-st${p.game && p.game.state === 'in' ? ' live' : ''}">${esc(status(p))}</td>`, `<td class="num strong">${f2(p.pts)}</td>`]
                            : ['<td class="gc-player">-</td>', '<td></td>', '<td></td>', '<td></td>', '<td></td>', '<td class="num">-</td>'];
             return (mine ? list : list.reverse()).join('');
         };
@@ -150,10 +189,10 @@
         const benchTotal = t => t.all.filter(p => p.slot === 'BE').reduce((a, p) => a + p.pts, 0);
         return `<div class="gc-teams wm-teams"><span class="l"><img src="${GT.logo(s.me.name)}" alt="">${esc(s.me.name)}</span><span>Full rosters</span><span class="r">${esc(s.opp.name)}<img src="${GT.logo(s.opp.name)}" alt=""></span></div>
             <div class="table-scroll"><table class="data-table gc-box wm-box">${COLS}${head('Starters')}<tbody>${starters.map(slotRow).join('')}
-                <tr class="gc-total"><td colspan="5"></td><td class="num">${f1(s.me.total)}</td><td class="gc-arw"></td><td class="gc-slot">Total</td><td class="gc-arw"></td><td class="num">${f1(s.opp.total)}</td><td colspan="5"></td></tr></tbody></table></div>
+                <tr class="gc-total"><td colspan="5"></td><td class="num">${f2(s.me.total)}</td><td class="gc-arw"></td><td class="gc-slot">Total</td><td class="gc-arw"></td><td class="num">${f2(s.opp.total)}</td><td colspan="5"></td></tr></tbody></table></div>
             ${bench ? `<div class="table-scroll"><table class="data-table gc-box wm-box">${COLS}${head('Bench')}<tbody>${Array(bench).fill('BE').map(slotRow).join('')}
-                <tr class="gc-total"><td colspan="5"></td><td class="num">${f1(benchTotal(s.me))}</td><td class="gc-arw"></td><td class="gc-slot">Bench</td><td class="gc-arw"></td><td class="num">${f1(benchTotal(s.opp))}</td><td colspan="5"></td></tr></tbody></table></div>` : ''}`;
+                <tr class="gc-total"><td colspan="5"></td><td class="num">${f2(benchTotal(s.me))}</td><td class="gc-arw"></td><td class="gc-slot">Bench</td><td class="gc-arw"></td><td class="num">${f2(benchTotal(s.opp))}</td><td colspan="5"></td></tr></tbody></table></div>` : ''}`;
     }
 
-    window.WMATCH = { load, score, boardHtml, inGameHtml, rostersHtml };
+    window.WMATCH = { load, score, league, tapeHtml, boardHtml, inGameHtml, rostersHtml };
 })();

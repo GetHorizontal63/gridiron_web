@@ -64,35 +64,40 @@
             <section class="w-head${manager ? '' : ' solo'}" id="w-head"><div class="w-bugwrap" id="w-bugwrap"><div class="w-bug game-band" id="w-band"></div></div>${manager ? '<div class="w-mscore" id="w-mscore"></div>' : ''}</section>
             <div class="w-watch" id="w-watch">
                 <div class="w-stage"><video id="watch-video" controls controlslist="nofullscreen" playsinline></video>
+                    <div class="w-tape" id="w-tape"></div>
                     <div class="w-bar"><div class="watch-now" id="watch-now"><b>Pick a feed</b><span class="muted">Feeds open when the game's window does</span></div>
                         <div class="w-feeds" id="w-feeds"></div>
-                        <button class="w-tool w-info" id="w-info" type="button">Hide info</button>
                         <button class="w-tool" id="w-full" type="button">Full screen</button></div></div>
                 <aside class="w-xray" id="w-xray">
                     <nav class="xr-tabs">${XTABS.map(([k, label], i) => `<button type="button" data-tab="${k}" class="${i ? '' : 'on'}">${label}</button>`).join('')}</nav>
                     <div class="xr-pane" id="xr-pane"></div></aside>
+                <button class="w-chev" id="w-chev" type="button" aria-label="Show or hide the stats">›</button>
             </div>
             <section class="w-below" id="w-below"></section>
             <section class="panel" id="np-box" hidden></section></div>`;
         const $ = id => document.getElementById(id);
         const video = $('watch-video'), band = $('w-band'), feeds = $('w-feeds'), boxEl = $('np-box'), wrap = $('w-watch'), below = $('w-below'), pane = $('xr-pane');
         const setNow = (title, text) => { $('watch-now').innerHTML = `<b>${esc(title)}</b><span class="muted">${esc(text)}</span>`; };
-        video.addEventListener('watcherror', e => setNow(e.detail.title, e.detail.text));
+        video.addEventListener('watcherror', e => { setNow(e.detail.title, e.detail.text); active = null; feeds.innerHTML = NFLPLUS.feedsHtml(current(), active); });
 
         // ---------------------------------------------------------------- full screen (video + X-Ray panel)
         const full = () => document.fullscreenElement === wrap || wrap.classList.contains('w-fs');
-        const fsLabel = () => { $('w-full').textContent = full() ? 'Exit full screen' : 'Full screen'; };
+        const fsLabel = () => { const short = innerWidth < 900; $('w-full').textContent = full() ? (short ? 'Exit' : 'Exit full screen') : (short ? 'Full' : 'Full screen'); };
+        fsLabel();
         $('w-full').addEventListener('click', async () => {
             if (full()) { exitFull(); return fsLabel(); }
             try { await wrap.requestFullscreen(); } catch (_) { wrap.classList.add('w-fs'); }   // no Fullscreen API: cover the window
-            fsLabel(); drawPane();
+            if (innerHeight < 500 || innerWidth < 760) wrap.classList.add('w-hide');   // a phone: the video gets the screen, the chevron brings the stats
+            fsLabel(); chev(); drawPane(); drawTape((current() || {}).event, true);
         });
-        document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) wrap.classList.remove('w-hide'); fsLabel(); });
-        $('w-info').addEventListener('click', e => {
-            wrap.classList.toggle('w-hide');
-            e.target.textContent = wrap.classList.contains('w-hide') ? 'Show info' : 'Hide info';
-        });
-        let xtab = XTABS[0][0];
+        document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) wrap.classList.remove('w-hide'); fsLabel(); chev(); });
+        // the chevron on the right edge: pull the stats panel out / push it away without leaving full screen
+        const chev = () => { $('w-chev').textContent = wrap.classList.contains('w-hide') ? '‹' : '›'; };
+        $('w-chev').addEventListener('click', () => { wrap.classList.toggle('w-hide'); chev(); });
+        let xtab = XTABS[0][0], side = 0;
+        // plays show ~15 s after they happen (the video plays ~12 s behind live); re-check every 3 s while the tab is open
+        const PLAY_DELAY = 15000;
+        const playsTick = setInterval(() => { if (!document.body.contains(pane)) return clearInterval(playsTick); if (xtab === 'plays') drawPane(); }, 3000);
         $('w-xray').querySelector('.xr-tabs').addEventListener('click', e => {
             const t = e.target.closest('button[data-tab]'); if (!t) return;
             xtab = t.dataset.tab;
@@ -101,7 +106,17 @@
         });
 
         // ---------------------------------------------------------------- the games, refreshed while anything is on
-        let list = [], selected = null, boxData = null, score = null, showRosters = false;
+        let list = [], selected = null, boxData = null, score = null, showRosters = false, active = null;   // active: the feed being watched
+        // the ticker tape (desktop and full screen only): every matchup of the week, live; re-scored at most once a minute
+        let tapeAt = 0;
+        const tapeWanted = () => matchMedia('(min-width: 1101px)').matches || document.fullscreenElement === wrap || wrap.classList.contains('w-fs');
+        async function drawTape(ev, force = false) {
+            if (!tapeWanted() || (!force && Date.now() - tapeAt < 60000)) return;
+            tapeAt = Date.now();
+            const game = current(), day = game ? new Date(game.start).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const L = await WMATCH.league(day, season, rules, ev ? { id: ev.id, state: ev.state, raw: boxData && boxData.id === ev.id && boxData.state !== 'pre' ? boxData.raw : null } : null).catch(() => null);
+            $('w-tape').innerHTML = WMATCH.tapeHtml(L, manager ? Number(who.owner) : null);
+        }
         const current = () => list.find(g => g.key === selected);
         const etDay = g => new Date(g.start).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         // the guide's games, day of and day ahead, in kickoff order; arrows either side of the game bug step through them
@@ -118,8 +133,8 @@
         function drawPane() {
             const game = current(), b2 = boxData && game && game.event && boxData.id === game.event.id ? boxData : null;
             const nav = list.length > 1 ? `<div class="xr-nav">${stepHtml('xr-step')}<span>${countText()}</span>${stepNext('xr-step')}</div>` : '';
-            pane.innerHTML = xtab === 'stats' ? (game ? nav + NFLPLUS.scoreCardHtml(game, b2) + NFLPLUS.leadersHtml(b2) : '<p class="np-empty">No game on screen.</p>')
-                : xtab === 'plays' ? NFLPLUS.playsHtml(b2)
+            pane.innerHTML = xtab === 'stats' ? (game ? nav + NFLPLUS.statsPaneHtml(game, b2, side) : '<p class="np-empty">No game on screen.</p>')
+                : xtab === 'plays' ? NFLPLUS.playsHtml(b2, PLAY_DELAY)
                 : xtab === 'fantasy' ? (score ? `<div class="xr-card">${WMATCH.boardHtml(m, score, liveNow())}</div>${WMATCH.inGameHtml(score)}` : '<div class="loading">Scoring the matchup...</div>')
                 : cardsHtml();
         }
@@ -155,7 +170,7 @@
             if (list.length > 1) { wrapEl.insertAdjacentHTML('afterbegin', stepHtml('w-step')); wrapEl.insertAdjacentHTML('beforeend', stepNext('w-step')); }
             wrapEl.classList.toggle('multi', list.length > 1);
             if (manager) $('w-mscore').innerHTML = m && m.missing ? `<p class="np-empty">${esc(m.missing)}</p>` : score ? WMATCH.boardHtml(m, score, liveNow()) : '<div class="loading">Scoring...</div>';
-            feeds.innerHTML = NFLPLUS.feedsHtml(game);
+            feeds.innerHTML = NFLPLUS.feedsHtml(game, active);
         }
         async function refresh() {
             clearTimeout(timer);
@@ -178,8 +193,11 @@
                 score = await WMATCH.score(m, rules, ev ? { id: ev.id, state: ev.state, raw: boxData && boxData.id === ev.id && boxData.state !== 'pre' ? boxData.raw : null } : null).catch(() => score);
             }
             drawTop(); drawBelow(); drawPane();
+            drawTape(ev);
             const busy = list.some(g => (g.event && g.event.state === 'in') || g.feeds.some(f => f.open));
-            timer = setTimeout(refresh, busy ? 20000 : 300000);
+            // every 20 s while something's on, else every 5 min, and always right when the next feed's program starts
+            const soon = NFLPLUS.nextStart(list);
+            timer = setTimeout(refresh, Math.min(busy ? 20000 : 300000, soon != null ? soon + 1500 : Infinity));
         }
         const pick = e => {
             const el = e.target.closest('.np-card'); if (!el || el.dataset.key === selected) return;
@@ -189,11 +207,15 @@
             if (e.target.closest('#w-rosters')) { showRosters = !showRosters; drawBelow(); return; }
             pick(e);
         });
-        pane.addEventListener('click', e => { const s = e.target.closest('[data-step]'); if (s) step(Number(s.dataset.step)); else pick(e); });
+        pane.addEventListener('click', e => {
+            const t = e.target.closest('[data-side]'); if (t) { side = Number(t.dataset.side); drawPane(); return; }
+            const s = e.target.closest('[data-step]'); if (s) step(Number(s.dataset.step)); else pick(e);
+        });
         $('w-bugwrap').addEventListener('click', e => { const s = e.target.closest('[data-step]'); if (s) step(Number(s.dataset.step)); });
         feeds.addEventListener('click', e => {
             const btn = e.target.closest('button[data-ch]'), game = current(); if (!btn || !game) return;
-            feeds.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === btn));
+            active = { key: game.key, ch: btn.dataset.ch };
+            feeds.innerHTML = NFLPLUS.feedsHtml(game, active);
             setNow(game.title, `Starting ${btn.firstChild.textContent}...`);
             try { WATCH.play(conn, btn.dataset.ch, video); setNow(game.title, `${btn.firstChild.textContent} · channel ${btn.dataset.ch}`); }
             catch (error) { setNow(game.title, error.message); }
