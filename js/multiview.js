@@ -58,7 +58,7 @@
             tiles.forEach((t, c) => {
                 const loud = layout === 'pip' ? t.el.dataset.slot === '0' : c === ch;
                 t.video.muted = !loud;
-                if (loud && t.video.paused && t.video.buffered.length) t.video.play().catch(() => {});
+                if (t.video.paused && t.video.buffered.length) WATCH.start(t.video);   // every tile plays; only the sound moves
                 t.el.classList.toggle('mv-focus', /^[234]$/.test(layout) && c === ch);
             });
         }

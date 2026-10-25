@@ -2,6 +2,14 @@
   "_about": "What changed in each Android app version; shown on pages/app.html. update_and_push.py --release --notes adds new entries.",
   "releases": [
     {
+      "version": "2.0.4",
+      "notes": [
+        "Watch: only games on our channels are listed",
+        "Watch: every multi-view tile starts on its own",
+        "Watch: played video is dropped as it goes, so long games don't stall or fill memory"
+      ]
+    },
+    {
       "version": "2.0.3",
       "notes": [
         "Watch moved to the More menu",

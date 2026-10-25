@@ -60,14 +60,12 @@
         });
         return list.sort((x, y) => new Date(x.start) - new Date(y.start));
     }
-    // the whole week: every game on ESPN's current-week scoreboard, each with the guide's channels for it (none when our
-    // channels don't carry it), plus anything else on the guide (an alternate feed rides with its game)
+    // the week's games on our channels: the guide's programs matched to ESPN's current-week scoreboard (scores, status),
+    // an alternate feed riding with its game. Games the guide doesn't carry aren't offered
     async function week(programs) {
         const board = await getJson(`${API}scoreboard`);
         const evs = { ...Object.fromEntries((board.events || []).map(e => [e.id, parseEvent(e)])), ...await events(programs) };
         const list = games(programs, evs);
-        (board.events || []).forEach(e => { if (!list.some(g => g.key === e.id)) { const ev = evs[e.id];
-            list.push({ key: e.id, title: `${ev.teams[0].full} at ${ev.teams[1].full}`, label: slot(ev.date), start: ev.date, stop: null, event: ev, feeds: [] }); } });
         const kick = g => new Date(g.event ? g.event.date : g.start);                // kickoff, not when the channel's program starts
         return { week: board.week && board.week.number, list: list.sort((x, y) => kick(x) - kick(y)) };
     }

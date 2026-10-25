@@ -132,7 +132,7 @@
             const i = list.findIndex(g => g.key === selected);
             selected = list[(i + by + list.length) % list.length].key; boxData = null; refresh();
         }
-        const cardsHtml = () => list.length ? `<div class="np-cards">${list.map(g => NFLPLUS.card(g, g.key === selected)).join('')}</div>` : '<p class="np-empty">No games this week.</p>';
+        const cardsHtml = () => list.length ? `<div class="np-cards">${list.map(g => NFLPLUS.card(g, g.key === selected)).join('')}</div>` : `<p class="np-empty">${guideError && !programs ? "Can't reach the relay for this week's channels. Try again in a minute." : 'Nothing on our channels this week yet.'}</p>`;
         const weekHtml = () => `<div class="panel-head"><div><div class="eyebrow">Week ${esc(weekNo || '')} · ${guideError && !programs ? `channels unavailable: can't reach the relay (${esc(guideError)})` : 'channels from the guide'}</div><h2 class="section-title">This Week</h2></div></div>${cardsHtml()}`;
 
         // ---------------------------------------------------------------- the player: one feed, PiP or multi-view (js/multiview.js)
@@ -182,7 +182,7 @@
             const game = current();
             band.innerHTML = game ? NFLPLUS.bandHtml(game).replace('</div>', `${list.length > 1 ? `<span class="w-count">${countText()}</span>` : ''}</div>`)
                 : `<div class="band-label"><span class="pill pill-dark">${esc(manager ? dayText : 'Guide')}</span>Week ${esc(weekNo || '')}</div>
-                <div class="scoreboard np-band-solo"><b>No games on the schedule this week</b></div>`;
+                <div class="scoreboard np-band-solo"><b>Nothing on our channels this week yet</b></div>`;
             const wrapEl = $('w-bugwrap');
             wrapEl.querySelectorAll('.w-step').forEach(x => x.remove());
             if (list.length > 1) { wrapEl.insertAdjacentHTML('afterbegin', stepHtml('w-step')); wrapEl.insertAdjacentHTML('beforeend', stepNext('w-step')); }

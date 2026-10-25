@@ -92,6 +92,9 @@
     // picture in picture). quality 'lo' takes the channel's low-bitrate copy (`lo` in the lock) when it has one: small
     // tiles use it so four feeds fit the relay's upload. play() / stop() are the one-feed shorthand: stop everything, open one
     const players = new Set();                            // open handles
+    // start a video without waiting for a tap: if the browser won't start it with sound, it starts muted (multi-view
+    // tiles are muted anyway; the one with the sound can be unmuted with a tap)
+    const start = video => video.play().catch(() => { if (!video.muted) { video.muted = true; video.play().catch(() => {}); } });
     // watcherror detail: { title, text } for the player's caption
     const report = (video, title, text) => video.dispatchEvent(new CustomEvent('watcherror', { detail: { title, text } }));
     function open(conn, number, video, { quality = 'hi' } = {}) {
@@ -99,10 +102,11 @@
         if (!ch) throw new Error(`Channel ${number} isn't set up`);
         if (!window.mpegts || !mpegts.isSupported()) throw new Error("This browser can't play live streams");
         const src = quality === 'lo' && ch.lo ? ch.lo : ch.url;
-        // never skip ahead to chase the live edge (that skip is the "catching up" jump); keep a large stash instead
+        // never skip ahead to chase the live edge (that skip is the "catching up" jump). Video already played is dropped:
+        // once more than 8 s of it is held it's trimmed to the last 4 s, so a long game (or four feeds) doesn't fill memory
         const ts = mpegts.createPlayer({ type: 'mpegts', isLive: true, url: src },
-                                       { enableStashBuffer: true, stashInitialSize: 2 * 1024 * 1024, liveBufferLatencyChasing: false, lazyLoad: false,
-                                         autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 60, autoCleanupMinBackwardDuration: 30 });
+                                       { enableStashBuffer: true, stashInitialSize: 512 * 1024, liveBufferLatencyChasing: false, lazyLoad: false,
+                                         autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 8, autoCleanupMinBackwardDuration: 4 });
         const h = { video, ts, number: String(number), quality: src === ch.lo ? 'lo' : 'hi', closed: false };
         h.close = () => close(h);
         players.add(h);
@@ -116,7 +120,7 @@
             if (h.closed) return clearInterval(h.cushion);
             const a = ahead();
             if (filling) {
-                if (a >= START) { filling = false; video.playbackRate = 1; video.play().catch(() => { /* autoplay blocked: the controls' play button starts it */ }); }
+                if (a >= START) { filling = false; video.playbackRate = 1; start(video); }
                 return;
             }
             if (a < LOW && video.playbackRate !== SLOW) video.playbackRate = SLOW;
@@ -153,5 +157,5 @@
     function play(conn, number, video) { stop(); return open(conn, number, video); }
     window.addEventListener('pagehide', stop);
 
-    window.WATCH = { seal, unlock, loadLock, remembered, forget, guideUrl, guide, open, close, play, stop, isPlaying: () => players.size > 0 };
+    window.WATCH = { seal, unlock, loadLock, remembered, forget, guideUrl, guide, open, close, start, play, stop, isPlaying: () => players.size > 0 };
 })();
