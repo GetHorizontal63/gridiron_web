@@ -2,9 +2,11 @@
    code box. Styled like the Game Center:
      header        the NFL game as a score bug (65%) beside the manager's fantasy matchup score (35%; the commissioner's
                    passcode has no matchup, so the bug runs full width)
-     player        full content width, the game's title and feed buttons under it
+     player        full content width: one feed, picture in picture or multi-view of 2-4 (js/multiview.js); the bar under
+                   it has the feeds of the game on screen and the layouts (each needs that many live feeds; a layout
+                   shrinks when a feed goes off the air). In multi-view the clicked tile has the sound and the score bug
      below         manager: both sides' players in this game, side by side; "Full rosters" opens both lineups in the
-                   Game Center's mirrored layout. Commissioner: today and tomorrow's games from the guide
+                   Game Center's mirrored layout. Everyone: the week's games, each with the channel it's on
      box score     with live fantasy points (league scoring, js/live-fantasy.js)
    Full screen is laid out like Prime Video's X-Ray: the video and its title on the left, a tabbed panel on the right
    (Stats: score card and game leaders; Fantasy; Plays; Games), "Hide info" gives the video the whole screen. */
@@ -59,15 +61,15 @@
                     meta: manager ? [dayText, m && m.opp ? `Week ${m.week} · vs ${esc(m.opp.name)}` : 'Live fantasy'] : ['Members only', "Today and tomorrow's games"] });
         document.getElementById('watch-lockbtn').addEventListener('click', () => { WATCH.stop(); WATCH.forget(); conn = null; exitFull(); showLock(); });
 
-        const XTABS = manager ? [['stats', 'Stats'], ['fantasy', 'Fantasy'], ['top', 'Top Contributors'], ['plays', 'Plays']]
+        const XTABS = manager ? [['stats', 'Stats'], ['fantasy', 'Fantasy'], ['top', 'Top Contributors'], ['plays', 'Plays'], ['games', 'Games']]
             : [['stats', 'Stats'], ['top', 'Top Contributors'], ['plays', 'Plays'], ['games', 'Games']];
         content.innerHTML = `<div class="wrap page-pad">
             <section class="w-head${manager ? '' : ' solo'}" id="w-head"><div class="w-bugwrap" id="w-bugwrap"><div class="w-bug game-band" id="w-band"></div></div>${manager ? '<div class="w-mscore" id="w-mscore"></div>' : ''}</section>
             <div class="w-watch" id="w-watch">
-                <div class="w-stage"><video id="watch-video" controls controlslist="nofullscreen" playsinline></video>
+                <div class="w-stage"><div id="mv-stage"></div>
                     <div class="w-tape" id="w-tape"></div>
                     <div class="w-bar"><div class="watch-now" id="watch-now"><b>Pick a feed</b><span class="muted">Feeds open when the game's window does</span></div>
-                        <div class="w-feeds" id="w-feeds"></div>
+                        <div class="w-feeds" id="w-feeds"></div><div class="mv-modes" id="mv-modes"></div>
                         <button class="w-tool" id="w-full" type="button">Full screen</button></div></div>
                 <aside class="w-xray" id="w-xray">
                     <nav class="xr-tabs">${XTABS.map(([k, label], i) => `<button type="button" data-tab="${k}" class="${i ? '' : 'on'}">${label}</button>`).join('')}</nav>
@@ -77,9 +79,8 @@
             <section class="w-below" id="w-below"></section>
             <section class="panel" id="np-box" hidden></section></div>`;
         const $ = id => document.getElementById(id);
-        const video = $('watch-video'), band = $('w-band'), feeds = $('w-feeds'), boxEl = $('np-box'), wrap = $('w-watch'), below = $('w-below'), pane = $('xr-pane');
+        const band = $('w-band'), feeds = $('w-feeds'), boxEl = $('np-box'), wrap = $('w-watch'), below = $('w-below'), pane = $('xr-pane');
         const setNow = (title, text) => { $('watch-now').innerHTML = `<b>${esc(title)}</b><span class="muted">${esc(text)}</span>`; };
-        video.addEventListener('watcherror', e => { setNow(e.detail.title, e.detail.text); active = null; feeds.innerHTML = NFLPLUS.feedsHtml(current(), active); });
 
         // ---------------------------------------------------------------- full screen (video + X-Ray panel)
         const full = () => document.fullscreenElement === wrap || wrap.classList.contains('w-fs');
@@ -109,7 +110,7 @@
         });
 
         // ---------------------------------------------------------------- the games, refreshed while anything is on
-        let list = [], selected = null, boxData = null, score = null, showRosters = false, active = null;   // active: the feed being watched
+        let list = [], weekNo = null, selected = null, boxData = null, score = null, showRosters = false;
         // the ticker tape (desktop and full screen only): every matchup of the week, live; re-scored at most once a minute
         let tapeAt = 0;
         const tapeWanted = () => matchMedia('(min-width: 1101px)').matches || document.fullscreenElement === wrap || wrap.classList.contains('w-fs');
@@ -131,7 +132,13 @@
             const i = list.findIndex(g => g.key === selected);
             selected = list[(i + by + list.length) % list.length].key; boxData = null; refresh();
         }
-        const cardsHtml = () => list.length ? `<div class="np-cards">${list.map(g => NFLPLUS.card(g, g.key === selected)).join('')}</div>` : '<p class="np-empty">Nothing on the guide for today or tomorrow.</p>';
+        const cardsHtml = () => list.length ? `<div class="np-cards">${list.map(g => NFLPLUS.card(g, g.key === selected)).join('')}</div>` : '<p class="np-empty">No games this week.</p>';
+        const weekHtml = () => `<div class="panel-head"><div><div class="eyebrow">Week ${esc(weekNo || '')} · channels from the guide</div><h2 class="section-title">This Week</h2></div></div>${cardsHtml()}`;
+
+        // ---------------------------------------------------------------- the player: one feed, PiP or multi-view (js/multiview.js)
+        const mv = MVIEW.player($('mv-stage'), conn, { list: () => list, current, modes: [$('mv-modes')], caption: setNow,
+            follow: key => { if (key !== selected) { selected = key; boxData = null; refresh(); } },
+            drawn: () => { feeds.innerHTML = NFLPLUS.feedsHtml(current(), mv.active()); } });
         const liveNow = () => { const g = current(); return !!(g && g.event && g.event.state === 'in'); };
         function drawPane() {
             const game = current(), b2 = boxData && game && game.event && boxData.id === game.event.id ? boxData : null;
@@ -152,15 +159,13 @@
             return WMATCH.topHtml(LIVEFP.score(b2.raw, rules), held, manager ? [Number(who.owner)] : []);
         }
         function drawBelow() {
-            if (!manager) {
-                below.innerHTML = `<div class="panel-head"><div><div class="eyebrow">From the guide</div><h2 class="section-title">Today &amp; Tomorrow</h2></div></div>${cardsHtml()}`;
-                return;
-            }
-            if (m && m.missing) { below.innerHTML = `<p class="np-empty">${esc(m.missing)}</p>`; return; }
+            if (!manager) { below.innerHTML = weekHtml(); return; }
+            if (m && m.missing) { below.innerHTML = `<p class="np-empty">${esc(m.missing)}</p><div class="w-week">${weekHtml()}</div>`; return; }
             below.innerHTML = `<div class="panel-head"><div><div class="eyebrow">Week ${m.week} · ${esc(m.me.name)} vs ${esc(m.opp.name)}</div><h2 class="section-title">In This Game</h2></div>
                     <button class="btn btn-outline" id="w-rosters" type="button">${showRosters ? 'Hide full rosters' : 'Full rosters'}</button></div>
                 ${score ? WMATCH.inGameHtml(score) : '<div class="loading">Scoring the matchup...</div>'}
-                ${showRosters && score ? `<div class="panel wm-full">${WMATCH.rostersHtml(score)}</div>` : ''}`;
+                ${showRosters && score ? `<div class="panel wm-full">${WMATCH.rostersHtml(score)}</div>` : ''}
+                <div class="w-week">${weekHtml()}</div>`;
         }
         async function drawBox() {
             const game = current();
@@ -176,26 +181,29 @@
         function drawTop() {
             const game = current();
             band.innerHTML = game ? NFLPLUS.bandHtml(game).replace('</div>', `${list.length > 1 ? `<span class="w-count">${countText()}</span>` : ''}</div>`)
-                : `<div class="band-label"><span class="pill pill-dark">${esc(manager ? dayText : 'Guide')}</span>Today &amp; tomorrow</div>
-                <div class="scoreboard np-band-solo"><b>Nothing on the guide yet: games show the day before and the day of</b></div>`;
+                : `<div class="band-label"><span class="pill pill-dark">${esc(manager ? dayText : 'Guide')}</span>Week ${esc(weekNo || '')}</div>
+                <div class="scoreboard np-band-solo"><b>No games on the schedule this week</b></div>`;
             const wrapEl = $('w-bugwrap');
             wrapEl.querySelectorAll('.w-step').forEach(x => x.remove());
             if (list.length > 1) { wrapEl.insertAdjacentHTML('afterbegin', stepHtml('w-step')); wrapEl.insertAdjacentHTML('beforeend', stepNext('w-step')); }
             wrapEl.classList.toggle('multi', list.length > 1);
             if (manager) $('w-mscore').innerHTML = m && m.missing ? `<p class="np-empty">${esc(m.missing)}</p>` : score ? WMATCH.boardHtml(m, score, liveNow()) : '<div class="loading">Scoring...</div>';
-            feeds.innerHTML = NFLPLUS.feedsHtml(game, active);
+            feeds.innerHTML = NFLPLUS.feedsHtml(game, mv.active());
         }
         async function refresh() {
             clearTimeout(timer);
             try {
-                const g = await WATCH.guide(conn);
-                list = NFLPLUS.games(g.programs, await NFLPLUS.events(g.programs));
+                const g = await WATCH.guide(conn), w = await NFLPLUS.week(g.programs);
+                list = w.list; weekNo = w.week;
             } catch (error) {
                 if (!list.length) below.innerHTML = `<p class="np-empty">Can't reach the guide (${esc(error.message)}). Try again later.</p>`;
             }
             if (!list.some(g => g.key === selected)) {
+                // first choice: a game you can watch now (yours first), then one on our channels, then any live game
                 const live = g => g.event && g.event.state === 'in', mine = g => manager && etDay(g) === who.date;
-                const first = list.find(g => live(g) && mine(g)) || list.find(live) || list.find(mine) || list[0];
+                const now = g => g.feeds.some(NFLPLUS.isLive), ours = g => g.feeds.length > 0;
+                const first = [g => now(g) && mine(g), now, g => ours(g) && mine(g) && g.event && g.event.state !== 'post', g => live(g) && mine(g), live,
+                               g => ours(g) && (!g.event || g.event.state !== 'post'), mine].map(f => list.find(f)).find(Boolean) || list[0];
                 selected = first ? first.key : null;
             }
             const ev = (current() || {}).event;
@@ -206,15 +214,18 @@
                 score = await WMATCH.score(m, rules, ev ? { id: ev.id, state: ev.state, raw: boxData && boxData.id === ev.id && boxData.state !== 'pre' ? boxData.raw : null } : null).catch(() => score);
             }
             drawTop(); drawBelow(); drawPane();
+            mv.update();
             drawTape(ev);
             const busy = list.some(g => (g.event && g.event.state === 'in') || g.feeds.some(f => f.open));
             // every 20 s while something's on, else every 5 min, and always right when the next feed's program starts
             const soon = NFLPLUS.nextStart(list);
             timer = setTimeout(refresh, Math.min(busy ? 20000 : 300000, soon != null ? soon + 1500 : Infinity));
         }
+        // a game card: on the bug; while feeds are playing, also on screen (its feed gets the sound, or takes that one's place)
         const pick = e => {
-            const el = e.target.closest('.np-card'); if (!el || el.dataset.key === selected) return;
-            selected = el.dataset.key; boxData = null; refresh();
+            const el = e.target.closest('.np-card'); if (!el) return;
+            mv.pick(list.find(x => x.key === el.dataset.key));
+            if (el.dataset.key !== selected) { selected = el.dataset.key; boxData = null; refresh(); }
         };
         below.addEventListener('click', e => {
             if (e.target.closest('#w-rosters')) { showRosters = !showRosters; drawBelow(); return; }
@@ -230,11 +241,7 @@
         $('w-bugwrap').addEventListener('click', e => { const s = e.target.closest('[data-step]'); if (s) step(Number(s.dataset.step)); });
         feeds.addEventListener('click', e => {
             const btn = e.target.closest('button[data-ch]'), game = current(); if (!btn || !game) return;
-            active = { key: game.key, ch: btn.dataset.ch };
-            feeds.innerHTML = NFLPLUS.feedsHtml(game, active);
-            setNow(game.title, `Starting ${btn.firstChild.textContent}...`);
-            try { WATCH.play(conn, btn.dataset.ch, video); setNow(game.title, `${btn.firstChild.textContent} · channel ${btn.dataset.ch}`); }
-            catch (error) { setNow(game.title, error.message); }
+            mv.put({ ch: String(btn.dataset.ch), key: game.key });
         });
         refresh();
     }

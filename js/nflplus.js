@@ -39,7 +39,9 @@
         return Object.fromEntries(boards.flatMap(b => b.events || []).map(e => [e.id, parseEvent(e)]));
     }
     function games(programs, evs) {
-        const list = [], used = new Set(), feedName = t => clean(t).split(/\s+/)[0];
+        const list = [], used = new Set();
+        const feedName = t => { const c = clean(t), w = c.match(/^(.*?)\s+with\s+(.+)$/i);
+            return w && /football/i.test(w[1]) ? w[2].replace(/\s+and\s+/i, ' & ') : c.split(/\s+/)[0]; };
         const findEvent = title => { const t = title.toLowerCase(); return Object.values(evs).find(e => e.teams.every(x => x.full && t.includes(x.full.toLowerCase()))); };
         programs.forEach((p, i) => {
             const ev = findEvent(p.title);
@@ -57,6 +59,17 @@
                              feeds: [{ channel: p.channel, name: 'Watch', open: p.open, start: p.start }] });
         });
         return list.sort((x, y) => new Date(x.start) - new Date(y.start));
+    }
+    // the whole week: every game on ESPN's current-week scoreboard, each with the guide's channels for it (none when our
+    // channels don't carry it), plus anything else on the guide (an alternate feed rides with its game)
+    async function week(programs) {
+        const board = await getJson(`${API}scoreboard`);
+        const evs = { ...Object.fromEntries((board.events || []).map(e => [e.id, parseEvent(e)])), ...await events(programs) };
+        const list = games(programs, evs);
+        (board.events || []).forEach(e => { if (!list.some(g => g.key === e.id)) { const ev = evs[e.id];
+            list.push({ key: e.id, title: `${ev.teams[0].full} at ${ev.teams[1].full}`, label: slot(ev.date), start: ev.date, stop: null, event: ev, feeds: [] }); } });
+        const kick = g => new Date(g.event ? g.event.date : g.start);                // kickoff, not when the channel's program starts
+        return { week: board.week && board.week.number, list: list.sort((x, y) => kick(x) - kick(y)) };
     }
 
     // ---------------------------------------------------------------- live scores (one week's scoreboard)
@@ -115,7 +128,9 @@
         return `<div class="gc-card np-card${on ? ' on' : ''}${g ? '' : ' np-solo'}" data-key="${esc(game.key)}">
             <div class="gc-top"><span class="gc-label">${esc(game.label)}</span><span class="gc-label np-status">${g ? status(g) : esc(kickoff(game.start))}</span></div>
             ${g ? g.teams.map(row).join('') : `<div class="np-title">${esc(game.title)}</div>`}
-            <div class="gc-foot">${sit} · ${game.feeds.map(f => `${esc(f.name === 'Watch' ? 'Ch' : f.name)} ${esc(f.channel)}`).join(' · ')}</div></div>`;
+            <div class="gc-foot"><span class="np-sit">${sit}</span><span class="np-chs">${game.feeds.length ? game.feeds.map(f =>
+                `<span class="np-ch${live(f) ? ' live' : ''}" title="${esc(f.title || game.title)}">${f.name === 'Watch' ? '' : `${esc(f.name)} `}<b>${esc(f.channel)}</b></span>`).join('')
+                : g && g.state === 'post' ? '' : '<span class="np-ch none">No channel</span>'}</span></div></div>`;
     }
     // the player bar's buttons: one per feed of the game on screen, greyed until the relay opens its window
     // a feed has a stream only while the relay has its window open AND its program has started (before kickoff EPlusTV
@@ -254,5 +269,5 @@
                 ${p.scoring ? `<span class="xr-pt"><b>${esc(p.score)}</b></span>` : `<span class="xr-ptype">${esc(p.type)}</span>`}<p title="${esc(p.text)}">${esc(p.text)}</p></div>`).join('')}</div>`; }).join('')}</div>`;
     }
 
-    window.NFLPLUS = { events, games, box, card, feedsHtml, nextStart, bandHtml, boxHtml, fantasyHtml, scoreCardHtml, statsPaneHtml, playsHtml };
+    window.NFLPLUS = { events, games, week, isLive: f => live(f), box, card, feedsHtml, nextStart, bandHtml, boxHtml, fantasyHtml, scoreCardHtml, statsPaneHtml, playsHtml };
 })();

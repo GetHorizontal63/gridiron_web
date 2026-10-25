@@ -1640,7 +1640,7 @@ a.ap-row:hover{background:var(--hover)}
 /* player: full width, title and feeds under it */
 .w-watch{margin-top:18px}
 .w-stage{background:var(--surface);border:1px solid var(--line);min-width:0}
-.w-stage video{display:block;width:100%;aspect-ratio:16/9;background:#000}
+.w-stage .mv-stage{display:block;width:100%;aspect-ratio:16/9;background:#000}
 .w-bar{display:flex;align-items:center;gap:8px;height:72px;padding:0 14px 0 18px}
 .watch-now{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:3px;overflow:hidden}
 .watch-now b,.watch-now span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1699,7 +1699,7 @@ a.ap-row:hover{background:var(--hover)}
 .w-watch.w-fs{position:fixed;inset:0;z-index:1000}
 .w-watch:fullscreen .pill-dark,.w-watch.w-fs .pill-dark{background:#2d3239;color:#fff}
 .w-watch:fullscreen .w-stage,.w-watch.w-fs .w-stage{background:none;border:0}
-.w-watch:fullscreen video,.w-watch.w-fs video{max-height:calc(100vh - 160px);border-radius:4px}
+.w-watch:fullscreen .mv-stage,.w-watch.w-fs .mv-stage{width:min(100%,calc((100vh - 160px) * 16 / 9));margin:0 auto;border-radius:4px}
 .w-watch:fullscreen .w-bar,.w-watch.w-fs .w-bar{height:96px;padding:0}
 .w-watch:fullscreen .watch-now b,.w-watch.w-fs .watch-now b{font-size:34px}
 .w-watch:fullscreen .watch-now span,.w-watch.w-fs .watch-now span{font-size:14px}
@@ -1708,8 +1708,8 @@ a.ap-row:hover{background:var(--hover)}
 .w-watch:fullscreen .w-xray,.w-watch.w-fs .w-xray{display:flex;flex-direction:column;min-width:0;height:calc(100vh - 56px)}
 .w-watch.w-hide{grid-template-columns:1fr}
 .w-watch.w-hide .w-xray{display:none}
-.xr-tabs{display:flex;gap:20px;height:48px;align-items:center;flex:0 0 auto}
-.xr-tabs button{background:none;border:0;padding:0;height:48px;font-family:var(--display);font-weight:800;font-size:22px;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.xr-tabs{display:flex;gap:16px;height:48px;align-items:center;flex:0 0 auto}
+.xr-tabs button{background:none;border:0;padding:0;height:48px;font-family:var(--display);font-weight:800;font-size:19px;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
 .xr-tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
 .xr-pane{flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--accent) var(--track);padding:12px 10px 4px 0;display:flex;flex-direction:column;gap:14px}
 .xr-card{background:var(--surface);border:2px solid rgba(255,255,255,.85);border-radius:8px;padding:14px 16px}
@@ -1908,12 +1908,12 @@ a.ap-row:hover{background:var(--hover)}
     .wm-side{height:auto}
     .wm-side + .wm-side{border-left:0;padding-left:0;border-top:1px solid var(--line)}
     .w-stage{background:#000}
-    .w-stage video{width:auto;max-width:100%;height:calc(100vh - 64px);margin:0 auto}
+    .w-stage .mv-stage{width:auto;max-width:100%;height:calc(100vh - 64px);margin:0 auto}
 
     /* full screen sideways: the video on the whole screen, a 44px bar, the stats a drawer */
     .w-watch:fullscreen,.w-watch.w-fs{display:block;padding:0;gap:0;margin:0}
     .w-watch:fullscreen .w-stage,.w-watch.w-fs .w-stage{position:absolute;inset:0;background:#000}
-    .w-watch:fullscreen video,.w-watch.w-fs video{width:100vw;height:calc(100vh - 44px);max-height:none;border-radius:0;object-fit:contain;margin:0}
+    .w-watch:fullscreen .mv-stage,.w-watch.w-fs .mv-stage{width:min(100vw,calc((100vh - 44px) * 16 / 9));height:auto;aspect-ratio:16/9;max-height:none;border-radius:0;margin:0 auto}   /* 16:9, so every tile is too */
     .w-watch:fullscreen .w-bar,.w-watch.w-fs .w-bar{display:flex;height:44px;padding:0 44px 0 12px;background:#0c0d0f}
     .w-watch:fullscreen .watch-now b,.w-watch.w-fs .watch-now b{font-family:var(--ui,inherit);font-size:13px;font-weight:800;text-transform:none}
     .w-watch:fullscreen .watch-now span,.w-watch.w-fs .watch-now span{display:none}
@@ -2003,12 +2003,70 @@ a.ap-row:hover{background:var(--hover)}
 @media (max-width:1100px){ .w-tape{display:none} }
 .w-watch:fullscreen .w-tape,.w-watch.w-fs .w-tape{display:grid;position:absolute;left:0;right:0;bottom:0;z-index:6}
 .w-watch:fullscreen,.w-watch.w-fs{padding-bottom:44px}
-.w-watch:fullscreen video,.w-watch.w-fs video{max-height:calc(100vh - 200px)}
+.w-watch:fullscreen .mv-stage,.w-watch.w-fs .mv-stage{width:min(100%,calc((100vh - 200px) * 16 / 9))}
 @media (orientation:landscape) and (max-height:500px){
     .w-watch:fullscreen,.w-watch.w-fs{padding-bottom:0}
-    .w-watch:fullscreen video,.w-watch.w-fs video{height:calc(100vh - 80px)}
+    .w-watch:fullscreen .mv-stage,.w-watch.w-fs .mv-stage{width:auto;height:calc(100vh - 80px)}
     .w-watch:fullscreen .w-bar,.w-watch.w-fs .w-bar{position:absolute;left:0;right:0;bottom:42px}
     .w-watch:fullscreen .w-xray,.w-watch.w-fs .w-xray{bottom:94px}
 }
 /* the full-screen panel scrolls; its sections keep their height */
 .xr-pane > *{flex-shrink:0}
+
+/* ---------------------------------------------------------------- Watch: one feed, picture in picture, multi-view of 2-4
+   (js/multiview.js). A tile's place comes from the stage's layout and its slot, so a layout change slides the tiles to
+   their new places; new tiles fade in, leaving ones fade out. Every tile keeps 16:9 */
+.mv-stage{position:relative;overflow:hidden;background:#000}
+.mv-tile{position:absolute;left:0;top:0;width:100%;height:100%;background:#000;opacity:1;
+    transition:left .45s cubic-bezier(.2,.7,.2,1),top .45s cubic-bezier(.2,.7,.2,1),width .45s cubic-bezier(.2,.7,.2,1),height .45s cubic-bezier(.2,.7,.2,1),opacity .35s ease}
+.mv-tile video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
+.mv-tile.mv-in,.mv-tile.mv-out{opacity:0}
+.mv-tile.mv-out{pointer-events:none}
+.mv-cap{position:absolute;left:8px;top:8px;height:20px;line-height:20px;padding:0 8px;background:rgba(12,13,15,.78);color:#e9ecf0;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;pointer-events:none}
+.mv-audio{display:none;position:absolute;right:8px;top:8px;height:20px;line-height:20px;padding:0 8px;background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;pointer-events:none}
+.mv-stage[data-layout="single"] .mv-cap{display:none}
+.mv-stage:not([data-layout="single"]) .mv-tile{cursor:pointer}
+/* multi-view: the tile with the sound wears the accent border */
+.mv-tile::after{content:'';position:absolute;inset:0;border:3px solid transparent;pointer-events:none;transition:border-color .2s}
+.mv-tile.mv-focus::after{border-color:var(--accent)}
+.mv-tile.mv-focus .mv-audio{display:block}
+/* picture in picture: the window in the lower right, over the main picture */
+.mv-stage[data-layout="pip"] .mv-tile[data-slot="1"]{left:70%;top:66%;width:27%;height:27%;z-index:2;box-shadow:0 8px 28px rgba(0,0,0,.6)}
+.mv-stage[data-layout="pip"] .mv-tile[data-slot="1"]::after{border:2px solid rgba(255,255,255,.85)}
+.mv-stage[data-layout="pip"] .mv-tile[data-slot="0"] .mv-cap{display:none}
+/* two side by side; three as one large and two stacked; four as a grid */
+.mv-stage[data-layout="2"] .mv-tile{top:25%;width:50%;height:50%}
+.mv-stage[data-layout="2"] .mv-tile[data-slot="1"]{left:50%}
+.mv-stage[data-layout="3"] .mv-tile[data-slot="0"]{top:16.667%;width:66.667%;height:66.667%}
+.mv-stage[data-layout="3"] .mv-tile[data-slot="1"]{left:66.667%;top:16.667%;width:33.333%;height:33.333%}
+.mv-stage[data-layout="3"] .mv-tile[data-slot="2"]{left:66.667%;top:50%;width:33.333%;height:33.333%}
+.mv-stage[data-layout="4"] .mv-tile{width:50%;height:50%}
+.mv-stage[data-layout="4"] .mv-tile[data-slot="1"],.mv-stage[data-layout="4"] .mv-tile[data-slot="3"]{left:50%}
+.mv-stage[data-layout="4"] .mv-tile[data-slot="2"],.mv-stage[data-layout="4"] .mv-tile[data-slot="3"]{top:50%}
+@media (prefers-reduced-motion:reduce){ .mv-tile{transition:none} }
+/* the layout buttons in the player's bar: a small picture of each layout; greyed until enough feeds are live */
+.mv-modes{display:flex;flex:none;border:1px solid var(--line);background:var(--surface)}
+.mv-modes:empty{display:none}
+.mv-mode{position:relative;width:40px;height:38px;display:grid;place-items:center;border:0;border-right:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
+.mv-mode:last-child{border-right:0}
+.mv-mode:hover:not(:disabled){color:var(--ink)}
+.mv-mode.on{color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent)}
+.mv-mode:disabled{opacity:.35;cursor:not-allowed}
+.mv-mode span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mv-ico{position:relative;display:block;width:18px;height:12px;border:1.5px solid currentColor;border-radius:2px;background-repeat:no-repeat}
+.mv-ico-pip::after{content:'';position:absolute;right:1px;bottom:1px;width:7px;height:4px;background:currentColor}
+.mv-ico-2{background-image:linear-gradient(currentColor,currentColor);background-size:1.5px 100%;background-position:center}
+.mv-ico-3{background-image:linear-gradient(currentColor,currentColor),linear-gradient(currentColor,currentColor);background-size:1.5px 100%,34% 1.5px;background-position:65% 0,100% 50%}
+.mv-ico-4{background-image:linear-gradient(currentColor,currentColor),linear-gradient(currentColor,currentColor);background-size:1.5px 100%,100% 1.5px;background-position:center,center}
+@media (max-width:760px){ .mv-mode{width:30px;height:30px} .mv-ico{width:15px;height:10px} }
+.w-watch:fullscreen .mv-mode,.w-watch.w-fs .mv-mode{height:30px}
+/* the week's games: each card's channels as badges (filled while that feed is live) */
+.gc-foot.gc-foot{display:flex;align-items:center;gap:8px}
+.np-sit{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.np-chs{margin-left:auto;display:flex;gap:4px;flex:none}
+.np-ch{height:18px;display:inline-flex;align-items:center;gap:4px;padding:0 6px;border:1px solid var(--line);color:var(--ink-2);font-size:9px;letter-spacing:.06em}
+.np-ch b{font-weight:800;color:var(--ink)}
+.np-ch.live{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.np-ch.live b{color:var(--on-accent)}
+.np-ch.none{color:var(--muted)}
+.w-week{margin-top:28px}
