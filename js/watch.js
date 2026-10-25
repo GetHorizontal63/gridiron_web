@@ -12,8 +12,8 @@
    Manager codes are a name and a date, so they're easy to guess: they personalise the page; the relay's EPG gate (a
    channel streams only while its game is on) is what limits the exposure. Codes are matched without case or spaces.
    The relay (tools/watch-relay.Caddyfile + tools/watch-gate.py) also serves /guide.json with the same key.
-   Once unlocked, the connection is remembered on that device (localStorage) until Lock is pressed or the code's key
-   leaves the lock. Streams are raw MPEG-TS (Dispatcharr's /proxy/ts/stream/...), played with mpegts.js. */
+   Once unlocked, the device remembers the data key (localStorage) until Lock is pressed or the code's key leaves the
+   lock, and reads the channels from the lock on every visit, so a channel added to the lock later shows up there too. Streams are raw MPEG-TS (Dispatcharr's /proxy/ts/stream/...), played with mpegts.js. */
 (function () {
     const enc = new TextEncoder(), dec = new TextDecoder();
     const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -56,18 +56,22 @@
         const who = JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(entry.iv) }, kek, unb64(entry.box))));
         const dataKey = await crypto.subtle.importKey('raw', unb64(who.k), 'AES-GCM', false, ['decrypt']);
         const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(lock.iv) }, dataKey, unb64(lock.data));
+        const k = who.k;
         delete who.k;
-        const conn = { ...JSON.parse(dec.decode(plain)), who, hash: entry.hash };
-        try { localStorage.setItem(STORE, JSON.stringify(conn)); } catch (_) { /* private mode: unlocked for this visit only */ }
-        return conn;
+        try { localStorage.setItem(STORE, JSON.stringify({ k, who, hash: entry.hash })); } catch (_) { /* private mode: unlocked for this visit only */ }
+        return { ...JSON.parse(dec.decode(plain)), who, hash: entry.hash };
     }
     const loadLock = src => fetch(src, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
-    // still valid while the lock still holds that code's key
-    function remembered(lock) {
+    // still valid while the lock still holds that code's key; the channels are read from the lock as it is now (an
+    // unlock saved before the key was kept has to enter its code once more)
+    async function remembered(lock) {
         try {
             const c = JSON.parse(localStorage.getItem(STORE) || 'null');
-            return c && lock && lock.v === 2 && c.channels && c.who && lock.keys.some(k => k.hash === c.hash) ? c : null;
-        } catch (_) { return null; }
+            if (!c || !c.k || !c.who || !lock || lock.v !== 2 || !lock.keys.some(k => k.hash === c.hash)) return null;
+            const dataKey = await crypto.subtle.importKey('raw', unb64(c.k), 'AES-GCM', false, ['decrypt']);
+            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(lock.iv) }, dataKey, unb64(lock.data));
+            return { ...JSON.parse(dec.decode(plain)), who: c.who, hash: c.hash };
+        } catch (_) { return null; }                              // the lock was rebuilt with a new data key: enter the code again
     }
     function forget() { try { localStorage.removeItem(STORE); } catch (_) { /* private mode */ } }
 

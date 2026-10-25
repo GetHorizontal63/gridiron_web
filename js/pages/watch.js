@@ -29,7 +29,7 @@
             <h2 class="panel-title">Not set up yet</h2><p class="muted">The commissioner hasn't turned on Watch for this season.</p></div></div>`;
         return;
     }
-    let conn = WATCH.remembered(lock), timer = null;
+    let conn = await WATCH.remembered(lock), timer = null;
     if (conn) open(); else showLock();
 
     function showLock(message = '') {
@@ -110,7 +110,7 @@
         });
 
         // ---------------------------------------------------------------- the games, refreshed while anything is on
-        let list = [], weekNo = null, selected = null, boxData = null, score = null, showRosters = false;
+        let list = [], weekNo = null, programs = null, guideError = '', selected = null, boxData = null, score = null, showRosters = false;
         // the ticker tape (desktop and full screen only): every matchup of the week, live; re-scored at most once a minute
         let tapeAt = 0;
         const tapeWanted = () => matchMedia('(min-width: 1101px)').matches || document.fullscreenElement === wrap || wrap.classList.contains('w-fs');
@@ -133,7 +133,7 @@
             selected = list[(i + by + list.length) % list.length].key; boxData = null; refresh();
         }
         const cardsHtml = () => list.length ? `<div class="np-cards">${list.map(g => NFLPLUS.card(g, g.key === selected)).join('')}</div>` : '<p class="np-empty">No games this week.</p>';
-        const weekHtml = () => `<div class="panel-head"><div><div class="eyebrow">Week ${esc(weekNo || '')} · channels from the guide</div><h2 class="section-title">This Week</h2></div></div>${cardsHtml()}`;
+        const weekHtml = () => `<div class="panel-head"><div><div class="eyebrow">Week ${esc(weekNo || '')} · ${guideError && !programs ? `channels unavailable: can't reach the relay (${esc(guideError)})` : 'channels from the guide'}</div><h2 class="section-title">This Week</h2></div></div>${cardsHtml()}`;
 
         // ---------------------------------------------------------------- the player: one feed, PiP or multi-view (js/multiview.js)
         const mv = MVIEW.player($('mv-stage'), conn, { list: () => list, current, modes: [$('mv-modes')], caption: setNow,
@@ -192,12 +192,11 @@
         }
         async function refresh() {
             clearTimeout(timer);
-            try {
-                const g = await WATCH.guide(conn), w = await NFLPLUS.week(g.programs);
-                list = w.list; weekNo = w.week;
-            } catch (error) {
-                if (!list.length) below.innerHTML = `<p class="np-empty">Can't reach the guide (${esc(error.message)}). Try again later.</p>`;
-            }
+            // the week's games come from ESPN whatever happens; the relay's guide only adds the channels (the last good
+            // copy is kept if the relay can't be reached for a moment)
+            try { programs = (await WATCH.guide(conn)).programs; guideError = ''; } catch (error) { guideError = error.message; }
+            try { const w = await NFLPLUS.week(programs || []); list = w.list; weekNo = w.week; }
+            catch (error) { if (!list.length) below.innerHTML = `<p class="np-empty">Can't load this week's games from ESPN (${esc(error.message)}). Try again later.</p>`; }
             if (!list.some(g => g.key === selected)) {
                 // first choice: a game you can watch now (yours first), then one on our channels, then any live game
                 const live = g => g.event && g.event.state === 'in', mine = g => manager && etDay(g) === who.date;
