@@ -2,6 +2,16 @@
   "_about": "What changed in each Android app version; shown on pages/app.html. update_and_push.py --release --notes adds new entries.",
   "releases": [
     {
+      "version": "2.0.3",
+      "notes": [
+        "Watch moved to the More menu",
+        "Watch: every game this week with its channel",
+        "Watch: picture in picture and multi-view of 2, 3 or 4 games (tap a game for its sound)",
+        "Watch: the week's schedule shows even when the channels can't be reached",
+        "Full-screen stats: Top Contributors, collapsible drives, tables that fit"
+      ]
+    },
+    {
       "version": "2.0.2",
       "notes": [
         "Watch: matchup scores hold a fixed width, right-aligned"
