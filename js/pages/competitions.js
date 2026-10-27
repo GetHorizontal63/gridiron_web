@@ -12,8 +12,7 @@
     if (page === 'index') {
         SITE.subHeader({ crumbs: [['Past Seasons']],
                          tabs: [{ label: 'All Seasons', href: url('pages/past-seasons/index.html'), active: true },
-                                { label: 'Historic League Moments', href: url('pages/past-seasons/moments.html') },
-                                { label: 'Watch', href: url('pages/past-seasons/watch.html') }] });
+                                { label: 'Historic League Moments', href: url('pages/past-seasons/moments.html') }] });
         SITE.hero({ title: 'Past Seasons', size: 'short', dots: false, image: 'background-7.png',
                     meta: [`${seasonList.length} seasons of Grass Touchers FFL · ${seasonList[seasonList.length - 1]}-${seasonList[0]}`] });
         const [placeRows, recs, weeks] = await Promise.all([
@@ -402,18 +401,29 @@
         const host = document.getElementById('season-quads');
         if (!host || !window.SR) return;
         const rows = await GT.query(`SELECT m.season, m.week, t.owner_id AS id, o.display_name AS name, t.score_rank_on_week AS rank,
-                                            t.team_score AS pf, t.opponent_score AS pa
+                                            t.opponent_score_rank_on_week AS opp_rank, t.team_score AS pf, t.opponent_score AS pa
                                      FROM matchup_team_stats t JOIN matchups m ON m.game_id = t.game_id JOIN owners o ON o.owner_id = t.owner_id
                                      WHERE m.season = $s AND m.season_period = 'Regular' AND t.team_score IS NOT NULL AND t.opponent_score IS NOT NULL`, { $s: season });
         const lines = SR.managers(SR.teamWeeks(rows));
         if (!lines.length) return;
+        // the opponent matrix: each manager's row counts where the scores against them ranked (kept in the main matrix's order)
+        const oppBy = new Map(SR.managers(SR.teamWeeks(rows.map(r => ({ ...r, rank: r.opp_rank, pf: r.pa, pa: r.pf })))).map(m => [m.id, m]));
+        const oppLines = Object.assign(lines.map(m => oppBy.get(m.id) || { ...m, dist: {} }), { maxRank: lines.maxRank });
         const weeks = new Set(rows.map(r => r.week)).size;
+        const note = { own: 'Weeks each manager finished at each weekly score rank', opp: "Weeks each manager's opponent finished at each weekly score rank" };
         host.innerHTML = `<div class="panel-head"><div><div class="eyebrow">${season} regular season · ${weeks} week${weeks === 1 ? '' : 's'}</div><h2 class="section-title">Season Quads</h2>
                 <p class="section-copy" style="max-width:none">Every week's scores ranked 1 to ${lines.maxRank}. Managers by all-play %; PCT 1-4 etc. = how often they won when their score ranked in that quad. Luck = wins minus what all-play predicts.</p></div>
                 <a class="card-link" href="${url(`pages/stats.html?season=${season}#moneyball`)}">All seasons in Moneyball</a></div>
             <div class="panel" style="margin-top:0">${SR.table(lines, { link: n => GT.managerLink(n, season) })}</div>
-            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Score Rank Matrix</h3>${SR.matrix(lines)}
-                <p class="an-note">Weeks each manager finished at each weekly score rank · 1 = highest score of the week${lines.some(l => !l.ranked) ? ` · managers under ${lines.min} games are listed unranked (faded)` : ''}.</p></div>`;
+            <div class="panel"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px"><h3 class="panel-title" style="margin:0">Score Rank Matrix</h3>
+                <span class="seg seg-eq" id="sr-side"><button data-k="own" class="on">Manager</button><button data-k="opp" data-tip="Where each manager's opponent's score ranked that week">Opponent</button></span></div>
+                <div id="sr-matrix">${SR.matrix(lines)}</div>
+                <p class="an-note"><span id="sr-note">${note.own}</span> · 1 = highest score of the week${lines.some(l => !l.ranked) ? ` · managers under ${lines.min} games are listed unranked (faded)` : ''}.</p></div>`;
+        host.querySelectorAll('#sr-side button').forEach(btn => btn.addEventListener('click', () => {
+            host.querySelectorAll('#sr-side button').forEach(x => x.classList.toggle('on', x === btn));
+            host.querySelector('#sr-matrix').innerHTML = SR.matrix(btn.dataset.k === 'opp' ? oppLines : lines);
+            host.querySelector('#sr-note').textContent = note[btn.dataset.k];
+        }));
     }
 
     // ============================================================ SCHEDULE

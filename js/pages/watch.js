@@ -15,10 +15,7 @@
     const content = document.getElementById('content');
     const b = await GT.load();
     const season = b.season;
-    const tabs = [{ label: 'All Seasons', href: url('pages/past-seasons/index.html') },
-                  { label: 'Historic League Moments', href: url('pages/past-seasons/moments.html') },
-                  { label: 'Watch', href: url('pages/past-seasons/watch.html'), active: true }];
-    const header = unlocked => SITE.subHeader({ crumbs: [['Past Seasons', url('pages/past-seasons/index.html')], ['Watch']], tabs,
+    const header = unlocked => SITE.subHeader({ crumbs: [['Watch']],
                                                  action: unlocked ? { label: 'Lock', id: 'watch-lockbtn' } : null });
     header(false);
     SITE.hero({ title: `${season} Watch`, size: 'short', dots: false, image: 'background-7.png', meta: ['Members only'] });

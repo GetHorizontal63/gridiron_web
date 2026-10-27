@@ -50,7 +50,6 @@
             { key: 'transactions', label: 'Transactions', href: 'pages/past-seasons/transactions.html' },   // trades + free agency
             { key: 'draft', label: 'Draft Grades', href: 'pages/past-seasons/draft.html' },
             { key: 'all-pro', label: 'All-Pro Teams', href: 'pages/past-seasons/all-pro.html' },
-            { key: 'watch', label: 'Watch', href: 'pages/past-seasons/watch.html', menuOnly: true },   // live TV (current season): tab only on All Seasons
             { key: 'moments', label: 'Historic League Moments', href: 'pages/past-seasons/moments.html', menuOnly: true }   // cross-season: tab only on All Seasons
         ] }
     ];
@@ -59,7 +58,8 @@
                          ['player-regression', 'Player Regression', 'pages/player-regression.html'], ['schedule-luck', 'Schedule Luck', 'pages/schedule-luck.html'],
                          ['lineup-regret', 'Lineup Regret', 'pages/lineup-regret.html']];
     const statsTabs = active => STATS_PAGES.map(([k, label, href]) => ({ label, href: ROOT + href, active: k === active }));
-    const NAV = [{ key: 'feed', label: 'Stats', href: 'pages/stats.html' }, ...SITE_MAP.filter(g => !g.hidden).map(({ key, label, href }) => ({ key, label, href }))];
+    const NAV = [{ key: 'feed', label: 'Stats', href: 'pages/stats.html' }, ...SITE_MAP.filter(g => !g.hidden).map(({ key, label, href }) => ({ key, label, href })),
+                 { key: 'watch', label: 'Watch', href: 'pages/past-seasons/watch.html' }];   // live TV (current season): its own section
 
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const url = path => ROOT + path;
@@ -101,7 +101,7 @@
         <aside class="drawer" id="drawer" aria-label="Site map">
             <div class="drawer-head">${brand(true)}<button class="drawer-close" id="drawer-close" aria-label="Close menu">×</button></div>
             <div class="drawer-top">
-                <a href="${url('index.html')}">Home</a><a href="${url('pages/search.html')}">Search</a><a href="${url('pages/stats.html')}">Stats</a><a href="${url('pages/app.html')}">Get the App</a>
+                <a href="${url('index.html')}">Home</a><a href="${url('pages/search.html')}">Search</a><a href="${url('pages/stats.html')}">Stats</a><a href="${url('pages/past-seasons/watch.html')}">Watch</a><a href="${url('pages/app.html')}">Get the App</a>
             </div>
             ${SITE_MAP.filter(g => !g.hidden).map(g => `<div class="drawer-group">
                 <a href="${url(g.href)}">${esc(g.label)}</a>
