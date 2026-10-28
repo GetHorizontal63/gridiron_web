@@ -16,6 +16,7 @@
 
     SITE.subHeader({ crumbs: [['Managers']],
                      tabs: [{ label: 'All Managers', href: url('pages/managers/index.html'), active: true },
+                            { label: 'Rankings', href: url('pages/managers/rankings.html') },
                             { label: 'Where We Marched', href: url('pages/managers/where-we-marched.html') },
                             { label: 'League Overview', href: url('pages/past-seasons/overview.html') }] });
     SITE.hero({ title: 'Managers', size: 'short', dots: false, image: 'background-3.png',

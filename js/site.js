@@ -15,6 +15,7 @@
             { key: 'vs-nfl', label: 'Vs the NFL', href: 'pages/managers/vs-nfl.html', needs: 'm' },
             { key: 'draft-tendencies', label: 'Draft Tendencies', href: 'pages/managers/draft-tendencies.html', needs: 'm' },
             { key: 'rivalry', label: 'Rivalries', href: 'pages/managers/rivalry.html', needs: 'm' },
+            { key: 'rankings', label: 'Rankings', href: 'pages/managers/rankings.html', menuOnly: true },   // menu + the Managers index tabs
             { key: 'where-we-marched', label: 'Where We Marched', href: 'pages/managers/where-we-marched.html', menuOnly: true }   // menu only, not a manager tab
         ] },
         { key: 'players', label: 'Players', href: 'pages/players/index.html', children: [

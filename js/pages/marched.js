@@ -5,6 +5,7 @@
     const b = await GT.load();
     SITE.subHeader({ crumbs: [['Managers', url('pages/managers/index.html')], ['Where We Marched']],
                      tabs: [{ label: 'All Managers', href: url('pages/managers/index.html') },
+                            { label: 'Rankings', href: url('pages/managers/rankings.html') },
                             { label: 'Where We Marched', href: url('pages/managers/where-we-marched.html'), active: true },
                             { label: 'League Overview', href: url('pages/past-seasons/overview.html') }] });
 
