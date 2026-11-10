@@ -339,11 +339,16 @@
     const topN = (list, better) => [...list].sort((a, b) => better === 'high' ? b.raw - a.raw : a.raw - b.raw).slice(0, 3);
     async function calculateTransactionAndLuckRecords() {
         try {
-            const [completedRows, moves, playerNames] = await Promise.all([
+            const [completedRows, moves, playerNames, tradePlayers] = await Promise.all([
                 LeagueDb.query('SELECT DISTINCT season FROM final_placements'),
                 LeagueDb.query(`SELECT m.move_id, m.kind, m.season, m.effective_week, m.grade, m.net_total, o.display_name AS owner
                                 FROM transaction_moves m JOIN owners o ON o.owner_id = m.owner_id WHERE m.provisional = 0`),
-                LeagueDb.query(`SELECT mp.move_id, mp.direction, p.name FROM transaction_move_players mp JOIN players p ON p.player_id = mp.player_id`)
+                LeagueDb.query(`SELECT mp.move_id, mp.direction, p.name FROM transaction_move_players mp JOIN players p ON p.player_id = mp.player_id`),
+                // trade volume: every player on either side of every trade, the season in progress included (a count needs no grade)
+                LeagueDb.query(`SELECT m.transaction_id AS tx, m.season, m.effective_week AS week, o.display_name AS owner, mp.player_id AS pid, p.name
+                                FROM transaction_moves m JOIN owners o ON o.owner_id = m.owner_id
+                                JOIN transaction_move_players mp ON mp.move_id = m.move_id LEFT JOIN players p ON p.player_id = mp.player_id
+                                WHERE m.kind = 'TRADE'`)
             ]);
             const completed = new Set(completedRows.map(r => r.season));
             const namesByMove = new Map();
@@ -402,6 +407,7 @@
             addRecordCategory('league-records', 'Transactions (Full History)', [
                 { key: 'txMostPickups', title: 'Waiver Wire Regular', subtitle: 'Most waiver and free-agent pickups' },
                 { key: 'txMostTrades', title: 'Deal Maker', subtitle: 'Most trades made' },
+                { key: 'txTradeVolume', title: 'Revolving Door', subtitle: 'Most unique players traded (sent or received), career' },
                 { key: 'txMostDrops', title: 'Cut Happy', subtitle: 'Most players dropped outright' },
                 { key: 'txBestPickupGpa', title: 'Waiver Wire Wizard', subtitle: 'Best pickup GPA, career (min 25 graded pickups)' },
                 { key: 'txWorstPickupGpa', title: 'Waiver Wire Dud', subtitle: 'Worst pickup GPA, career (min 25 graded pickups)' },
@@ -417,6 +423,7 @@
             addRecordCategory('single-season', 'Transactions (Single Season)', [
                 { key: 'txMostPickupsSeason', title: 'Always on the Wire', subtitle: 'Most pickups in a single season' },
                 { key: 'txMostTradesSeason', title: 'Wheeler Dealer', subtitle: 'Most trades in a single season' },
+                { key: 'txTradeVolumeSeason', title: 'Open for Business', subtitle: 'Most unique players traded (sent or received) in a single season' },
                 { key: 'txMostDropsSeason', title: 'Roster Churn', subtitle: 'Most players dropped outright in a single season' },
                 { key: 'txBestPickupGpaSeason', title: 'Wire Genius', subtitle: 'Best pickup GPA in a season (min 8 graded pickups)' },
                 { key: 'txWorstPickupGpaSeason', title: 'Wire Disaster', subtitle: 'Worst pickup GPA in a season (min 8 graded pickups)' },
@@ -427,6 +434,7 @@
                 { key: 'txBestPickupEver', title: 'Best Pickup Ever', subtitle: 'Most rest-of-season points gained on one pickup (added minus dropped)' },
                 { key: 'txBestTradeEver', title: 'Best Trade Ever', subtitle: 'Most rest-of-season points gained on one side of a trade' },
                 { key: 'txWorstTradeEver', title: 'Worst Trade Ever', subtitle: 'Most rest-of-season points lost on one side of a trade' },
+                { key: 'txBiggestTrade', title: 'Blockbuster', subtitle: 'Most unique players moved in a single trade (both sides)' },
                 { key: 'txCostliestDrop', title: 'Costliest Drop', subtitle: 'Dropped a player who then scored the most points for the rest of the regular season' }
             ]);
             addRecordCategory('single-season', 'Luck (Single Season)', [
@@ -457,6 +465,27 @@
             set('txBestTradeEver', moveList('TRADE', 'IN'), 'high');
             set('txWorstTradeEver', moveList('TRADE', 'IN'), 'low');
             set('txCostliestDrop', moveList('DROP', 'OUT'), 'low');   // a drop's net is minus what the player scored afterwards
+            // trade volume: distinct players per manager (career / season) and per trade; a player who came in and
+            // later went back out in another deal counts once
+            const distinct = (keyOf, labelOf) => {
+                const m = new Map();
+                tradePlayers.forEach(r => {
+                    const k = keyOf(r);
+                    if (!m.has(k)) m.set(k, { label: labelOf(r), ids: new Set(), r });
+                    m.get(k).ids.add(r.pid);
+                });
+                return m;
+            };
+            const volume = map => [...map.values()].map(e => ({ team: e.label, raw: e.ids.size, value: String(e.ids.size) }));
+            set('txTradeVolume', volume(distinct(r => r.owner, r => r.owner)), 'high');
+            set('txTradeVolumeSeason', volume(distinct(r => `${r.owner}|${r.season}`, r => `${r.owner} (${r.season})`)), 'high');
+            const deals = distinct(r => r.tx, r => r.tx);
+            set('txBiggestTrade', [...deals.entries()].map(([tx, e]) => {
+                const rows = tradePlayers.filter(r => r.tx === tx);
+                const sides = [...new Set(rows.map(r => r.owner))].join(' & ');
+                const names = [...new Map(rows.map(r => [r.pid, r.name || 'Unknown'])).values()].join(', ');
+                return { team: `${sides} (${e.r.season} Wk ${e.r.week}) - ${names}`, raw: e.ids.size, value: String(e.ids.size) };
+            }), 'high');
         } catch (error) {
             console.error('Error calculating transaction records:', error);
         }

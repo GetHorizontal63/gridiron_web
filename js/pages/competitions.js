@@ -105,9 +105,15 @@
             ${g.id ? `<a class="match-open" href="${url(`pages/past-seasons/game-center.html?id=${g.id}`)}">Game center →</a>` : ''}
         </div>`;
     };
-    const standingsTable = (rows, highlightCut = 0) => `<div class="table-scroll"><table class="data-table" style="min-width:820px">${SITE.cols('5%', '33%', '6%', '6%', '6%', '8%', '10%', '10%', '9%', '7%')}<thead><tr>
+    // magic: optional { heads: [label, ...], cell: (row, i) => [html, ...] } adds magic-number columns (division tables only)
+    const standingsTable = (rows, highlightCut = 0, magic = null) => {
+        const extra = magic ? magic.heads.length : 0;
+        const widths = extra === 2 ? ['5%', '21%', '5%', '5%', '5%', '7%', '9%', '9%', '8%', '6%', '10%', '10%']
+                     : extra === 1 ? ['5%', '26%', '5%', '5%', '5%', '7%', '9%', '9%', '8%', '7%', '14%']
+                     : ['5%', '33%', '6%', '6%', '6%', '8%', '10%', '10%', '9%', '7%'];
+        return `<div class="table-scroll"><table class="data-table" style="min-width:${820 + extra * 110}px">${SITE.cols(...widths)}<thead><tr>
             <th class="num">#</th><th>Manager</th><th class="num">W</th><th class="num">L</th><th class="num">T</th><th class="num">Pct</th>
-            <th class="num">PF</th><th class="num">PA</th><th class="num">Diff</th><th class="num">Finish</th></tr></thead><tbody>
+            <th class="num">PF</th><th class="num">PA</th><th class="num">Diff</th><th class="num">Finish</th>${magic ? magic.heads.map(([h, tip]) => `<th class="num" title="${esc(tip)}">${esc(h)}</th>`).join('') : ''}</tr></thead><tbody>
         ${rows.map((r, i) => {
             const id = (b.byName[r.owner.toLowerCase()] || {}).id;
             const fin = b.finish[`${season}-${id}`];
@@ -117,8 +123,9 @@
                 <td class="num">${r.wins}</td><td class="num">${r.losses}</td><td class="num">${r.ties}</td><td class="num">${pct.toFixed(3).replace(/^0/, '')}</td>
                 <td class="num">${GT.pts(r.pointsFor)}</td><td class="num">${GT.pts(r.pointsAgainst)}</td>
                 <td class="num ${r.pointsFor >= r.pointsAgainst ? 'win' : 'loss'}">${(r.pointsFor >= r.pointsAgainst ? '+' : '') + GT.pts(r.pointsFor - r.pointsAgainst)}</td>
-                <td class="num"><b>${fin ? ord(fin) : '-'}</b></td></tr>`;
+                <td class="num"><b>${fin ? ord(fin) : '-'}</b></td>${magic ? magic.cell(r, i).map(c => `<td class="num">${c}</td>`).join('') : ''}</tr>`;
         }).join('')}</tbody></table></div>`;
+    };
 
     // ============================================================ OVERVIEW
     function overview() {
@@ -505,11 +512,62 @@
                     meta: [`Regular season · ranked by record, ${season >= 2026 ? 'point differential, head-to-head' : 'head-to-head, point differential'}, points for`] });
         const byDiv = {};
         pic.divisionStandings.forEach(r => { (byDiv[r.divisionName] = byDiv[r.divisionName] || []).push(r); });
+
+        // ---- magic numbers (division tables). Every cut is inside the division (playoff_division_slots): the top half
+        // of the division through 2025 (2 of 4, 4 of 8, 8 of the 15-team 2021 pool); in play-in seasons (2026 on) the
+        // top 2 get a bye and seeds 3-6 a week-14 play-in, so "playoffs" = top 6 and "bye" = top 2.
+        // Pairwise: ahead(a, c) = a's wins + c's losses that lock a ahead of c. A tie in record counts against a, since
+        // the tiebreak (point differential / head-to-head) is not settled until the games are played.
+        // Clinch top K = the (n-K)th smallest ahead(me, other); eliminated from top K = the Kth smallest ahead(other, me).
+        // In position for a cut -> the clinch number; outside it -> the elimination number.
+        const rule = pic.rules || {};
+        const playin = rule.qualification_method === 'divisional_top_n_plus_playin';
+        const allReg = games.filter(g => g.period === 'Regular');
+        const dataEnd = allReg.reduce((m, g) => Math.max(m, g.week), 0);
+        const endWeek = playin ? 13 : Math.max(rule.regular_season_end_week || 0, dataEnd);   // play-in format: week 14 is the play-in
+        const unseen = Math.max(0, endWeek - dataEnd);           // weeks not on file yet (season in progress): one game each
+        const schedule = {};                                     // each team's own regular-season games (2021 had byes)
+        allReg.forEach(g => [g.home, g.away].forEach(nm => { schedule[nm] = (schedule[nm] || 0) + 1; }));
+        const CLINCHED = '<b class="win">Clinched</b>', ELIM = '<span class="loss">Eliminated</span>';
+        const cutsOf = rows => {
+            const slot = (pic.divisionSlots || []).find(s => s.divisionId === rows[0].divisionId);
+            const playoffK = slot ? slot.autoSlots + slot.playinSlots : Math.ceil(rows.length / 2);
+            return { playoffK, byeK: slot && slot.playinSlots ? slot.autoSlots : 0 };
+        };
+        const magicFor = rows => {
+            const n = rows.length, { playoffK, byeK } = cutsOf(rows);
+            const t = rows.map(r => {
+                const lo = r.wins + r.ties / 2, left = Math.max(0, (schedule[r.owner] || 0) + unseen - (r.wins + r.losses + r.ties));
+                return { lo, hi: lo + left, left };
+            });
+            const done = t.every(x => x.left === 0);             // regular season over: the final rank (tiebreaks applied) decides
+            const ahead = (a, c) => Math.max(0, Math.floor(t[c].hi - t[a].lo) + 1);
+            const nth = (list, k) => list.sort((x, y) => x - y)[k - 1];
+            const status = (i, K) => {
+                const others = rows.map((_, j) => j).filter(j => j !== i);
+                if (i < K) {
+                    const m = done || K >= n ? 0 : nth(others.map(j => ahead(i, j)), n - K);
+                    return m === 0 ? CLINCHED : `<span class="muted">Clinch</span> <b>${m}</b>`;
+                }
+                const e = done ? 0 : nth(others.map(j => ahead(j, i)), K);
+                return e === 0 ? ELIM : `<span class="muted">Elim</span> <b>${e}</b>`;
+            };
+            const heads = [['Playoffs', `Top ${playoffK} in the division${byeK ? ' (bye or play-in)' : ''}: magic number to clinch while in position, elimination number while outside`]];
+            if (byeK) heads.push(['Bye', `Top ${byeK} in the division: magic number to clinch the bye while in position, elimination number while outside`]);
+            return { heads, cell: (r, i) => byeK ? [status(i, playoffK), status(i, byeK)] : [status(i, playoffK)] };
+        };
+        const firstDiv = Object.values(byDiv)[0];
+        const cuts = firstDiv ? cutsOf(firstDiv) : null;
+        const magicNote = !cuts ? '' : `<p class="section-copy" style="max-width:none">Magic numbers: <b>Clinch N</b> = N combined wins by the team and losses by the team chasing it lock the spot;
+            <b>Elim N</b> = N combined losses by the team and wins by the team ahead of it end the chase. ${cuts.byeK
+                ? `Playoffs = top ${cuts.playoffK} in the division (seeds 1-${cuts.byeK} bye, ${cuts.byeK + 1}-${cuts.playoffK} play in during week 14); Bye = top ${cuts.byeK}.`
+                : `Playoffs = top ${cuts.playoffK} in the division.`}
+            A tie in record counts against the team, since the tiebreak is not settled until the games are played.</p>`;
         content.innerHTML = `<div class="wrap page-pad">
-            <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${season} season${week != null ? ` · through week ${week}` : ''}</div><h2 class="section-title">Standings</h2></div>
+            <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${season} season${week != null ? ` · through week ${week}` : ''}</div><h2 class="section-title">Standings</h2>${magicNote}</div>
                 <div class="section-tools" style="margin:0">${seasonSelect()}${regWeeks.length ? `<select class="select" id="standings-week">${regWeeks.map(w =>
                     `<option value="${w}"${w === week ? ' selected' : ''}>Week ${w}</option>`).join('')}</select>` : ''}</div></div>
-            ${Object.entries(byDiv).map(([name, rows]) => `<div class="panel"><h3 class="panel-title" style="margin-bottom:12px">${esc(name)}</h3>${standingsTable(rows)}</div>`).join('')}
+            ${Object.entries(byDiv).map(([name, rows]) => `<div class="panel"><h3 class="panel-title" style="margin-bottom:12px">${esc(name)}</h3>${standingsTable(rows, 0, magicFor(rows))}</div>`).join('')}
             <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Overall</h3>${standingsTable(pic.standings)}</div></div>`;
         bindSeason();
         const wk = document.getElementById('standings-week');
