@@ -105,15 +105,16 @@
             ${g.id ? `<a class="match-open" href="${url(`pages/past-seasons/game-center.html?id=${g.id}`)}">Game center →</a>` : ''}
         </div>`;
     };
-    // magic: optional { heads: [label, ...], cell: (row, i) => [html, ...] } adds magic-number columns (division tables only)
+    // magic: optional { heads: [[label, tip], ...], cell: (row, i) => [html, ...] } fills the two magic-number columns
+    // (division tables only). Every division table, every season, has the same 12 columns at the same widths so nothing
+    // shifts between tables or seasons: a season without byes shows a dash under Bye. The Overall table is overallTable.
     const standingsTable = (rows, highlightCut = 0, magic = null) => {
-        const extra = magic ? magic.heads.length : 0;
-        const widths = extra === 2 ? ['5%', '21%', '5%', '5%', '5%', '7%', '9%', '9%', '8%', '6%', '10%', '10%']
-                     : extra === 1 ? ['5%', '26%', '5%', '5%', '5%', '7%', '9%', '9%', '8%', '7%', '14%']
-                     : ['5%', '33%', '6%', '6%', '6%', '8%', '10%', '10%', '9%', '7%'];
-        return `<div class="table-scroll"><table class="data-table" style="min-width:${820 + extra * 110}px">${SITE.cols(...widths)}<thead><tr>
+        const slots = magic ? [0, 1].map(k => magic.heads[k] || ['Bye', 'No playoff byes in this season\'s format']) : [['', ''], ['', '']];
+        const cells = (r, i) => { const got = magic ? magic.cell(r, i) : [];
+            return [0, 1].map(k => magic ? (got[k] != null ? got[k] : '<span class="muted">-</span>') : ''); };
+        return `<div class="table-scroll"><table class="data-table" style="min-width:1040px">${SITE.cols('5%', '21%', '5%', '5%', '5%', '7%', '9%', '9%', '8%', '6%', '10%', '10%')}<thead><tr>
             <th class="num">#</th><th>Manager</th><th class="num">W</th><th class="num">L</th><th class="num">T</th><th class="num">Pct</th>
-            <th class="num">PF</th><th class="num">PA</th><th class="num">Diff</th><th class="num">Finish</th>${magic ? magic.heads.map(([h, tip]) => `<th class="num" title="${esc(tip)}">${esc(h)}</th>`).join('') : ''}</tr></thead><tbody>
+            <th class="num">PF</th><th class="num">PA</th><th class="num">Diff</th><th class="num">Finish</th>${slots.map(([h, tip]) => `<th class="num"${tip ? ` data-tip="${esc(tip)}"` : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>
         ${rows.map((r, i) => {
             const id = (b.byName[r.owner.toLowerCase()] || {}).id;
             const fin = b.finish[`${season}-${id}`];
@@ -123,7 +124,47 @@
                 <td class="num">${r.wins}</td><td class="num">${r.losses}</td><td class="num">${r.ties}</td><td class="num">${pct.toFixed(3).replace(/^0/, '')}</td>
                 <td class="num">${GT.pts(r.pointsFor)}</td><td class="num">${GT.pts(r.pointsAgainst)}</td>
                 <td class="num ${r.pointsFor >= r.pointsAgainst ? 'win' : 'loss'}">${(r.pointsFor >= r.pointsAgainst ? '+' : '') + GT.pts(r.pointsFor - r.pointsAgainst)}</td>
-                <td class="num"><b>${fin ? ord(fin) : '-'}</b></td>${magic ? magic.cell(r, i).map(c => `<td class="num">${c}</td>`).join('') : ''}</tr>`;
+                <td class="num"><b>${fin ? ord(fin) : '-'}</b></td>${cells(r, i).map(c => `<td class="num">${c}</td>`).join('')}</tr>`;
+        }).join('')}</tbody></table></div>`;
+    };
+
+    // The Overall table: the whole league in one ranking, with how each team scores. Regular-season games through the
+    // chosen week. Its own fixed 15-column layout, filling the panel (no magic numbers: the cuts are per division).
+    const overallTable = (rows, throughWeek) => {
+        const scores = {}, byWeek = {};
+        games.filter(g => g.period === 'Regular' && g.hs != null && g.aws != null && (throughWeek == null || g.week <= throughWeek)).forEach(g => {
+            [[g.home, g.hs, g.aws], [g.away, g.aws, g.hs]].forEach(([n, f, a]) => { (scores[n] = scores[n] || []).push({ f, a, w: g.week }); (byWeek[g.week] = byWeek[g.week] || []).push(f); });
+        });
+        const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
+        const stat = owner => {
+            const list = scores[owner] || [], f = list.map(x => x.f);
+            if (!f.length) return null;
+            const s = [...f].sort((x, y) => x - y), m = s.length >> 1, avg = mean(f);
+            const allPlay = mean(list.map(x => { const o = byWeek[x.w]; return o.length > 1 ? (o.filter(v => v < x.f).length + (o.filter(v => v === x.f).length - 1) / 2) / (o.length - 1) : 0.5; }));
+            return { ppg: avg, papg: mean(list.map(x => x.a)), med: s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2,
+                     sd: f.length > 1 ? Math.sqrt(f.reduce((t, x) => t + (x - avg) ** 2, 0) / (f.length - 1)) : null, hi: s[s.length - 1], lo: s[0], allPlay };
+        };
+        const H = (label, tip) => `<th class="num" data-tip="${esc(tip)}">${label}</th>`;
+        const v = x => x == null ? '-' : GT.pts(x);
+        return `<div class="table-scroll"><table class="data-table" style="min-width:1060px">${SITE.cols('4%', '15%', '6%', '6%', '7%', '7%', '7%', '6%', '6%', '6%', '5%', '6%', '6%', '7%', '6%')}<thead><tr>
+            <th class="num">#</th><th>Manager</th>${H('Record', 'Wins-losses (-ties)')}${H('Pct', 'Win percentage, ties count half')}
+            ${H('PF', 'Points for')}${H('PA', 'Points against')}${H('Diff', 'Points for minus points against')}
+            ${H('PPG', 'Points per game')}${H('PA/G', 'Points against per game: the schedule the team drew')}${H('Median', 'Middle weekly score: one blow-up week moves it less than PPG')}
+            ${H('SD', 'Standard deviation of weekly scores (square root of the variance): how far a typical week strays from PPG')}
+            ${H('High', 'Highest weekly score')}${H('Low', 'Lowest weekly score')}
+            ${H('All-play', 'Share of the league each weekly score would have beaten (ties count half): the record with schedule luck taken out')}${H('Finish', 'Final place (finished seasons)')}
+            </tr></thead><tbody>
+        ${rows.map((r, i) => {
+            const id = (b.byName[r.owner.toLowerCase()] || {}).id, fin = b.finish[`${season}-${id}`], x = stat(r.owner) || {};
+            const pct = r.gamesPlayed ? (r.wins + r.ties / 2) / r.gamesPlayed : 0, diff = r.pointsFor - r.pointsAgainst;
+            return `<tr><td class="num">${i + 1}</td><td><a class="team-cell" href="${mUrl(r.owner)}"><img src="${GT.logo(r.owner)}" alt=""><span><b>${esc(r.owner)}</b>
+                    <span class="muted"> · ${esc(GT.teamName(b, r.owner, season))}</span></span></a></td>
+                <td class="num">${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}</td><td class="num">${pct.toFixed(3).replace(/^0/, '')}</td>
+                <td class="num">${GT.pts(r.pointsFor)}</td><td class="num">${GT.pts(r.pointsAgainst)}</td>
+                <td class="num ${diff >= 0 ? 'win' : 'loss'}">${(diff >= 0 ? '+' : '') + GT.pts(diff)}</td>
+                <td class="num"><b>${v(x.ppg)}</b></td><td class="num">${v(x.papg)}</td><td class="num">${v(x.med)}</td><td class="num">${v(x.sd)}</td>
+                <td class="num">${v(x.hi)}</td><td class="num">${v(x.lo)}</td><td class="num">${x.allPlay == null ? '-' : (x.allPlay * 100).toFixed(1) + '%'}</td>
+                <td class="num"><b>${fin ? ord(fin) : '-'}</b></td></tr>`;
         }).join('')}</tbody></table></div>`;
     };
 
@@ -231,7 +272,7 @@
                          eff: signed ? (rosters.length ? 100 * bestWeeks / rosters.length : null) : best > 0 ? 100 * act / best : null };
             }).sort((x, y) => y.fp - x.fp);
             return `<div class="panel pg-panel"><div class="pg-head"><h3 class="panel-title">${esc(name)}</h3>${sub ? `<span>${esc(sub)}</span>` : ''}</div>
-                <table class="data-table pg-table">${SITE.cols('30px', 'auto', '58px', '54px', '62px')}
+                <table class="data-table pg-table">${SITE.cols('30px', 'auto', '58px', '64px', '62px')}
                     <thead><tr><th class="num">#</th><th>Manager</th><th class="num">FP</th><th class="num">${signed ? 'vs Proj' : 'FP+'}</th><th class="num">${signed ? 'Best' : 'Eff'}</th></tr></thead>
                     <tbody>${lines.map((l, i) => `<tr><td class="num"><b>${i + 1}</b></td>
                         <td><span class="pg-mgr"><img src="${GT.logo(l.owner)}" alt="">${GT.managerLink(l.owner, season)}</span></td>
@@ -509,7 +550,8 @@
         const week = regWeeks.includes(Number(param('week'))) ? Number(param('week')) : last;
         const pic = week != null && week !== last ? await GT.standings(season, week) : picture;
         SITE.hero({ title: `${season} Standings`, size: 'short', dots: false, image: 'background-18.png',
-                    meta: [`Regular season · ranked by record, ${season >= 2026 ? 'point differential, head-to-head' : 'head-to-head, point differential'}, points for`] });
+                    meta: [`Regular season · ranked by record, then ${season === 2021 ? 'point differential, head-to-head among tied teams, points for'
+                        : `head-to-head among tied teams, ${season === 2019 ? 'points for, point differential' : 'point differential, points for'}`}`] });
         const byDiv = {};
         pic.divisionStandings.forEach(r => { (byDiv[r.divisionName] = byDiv[r.divisionName] || []).push(r); });
 
@@ -517,7 +559,7 @@
         // of the division through 2025 (2 of 4, 4 of 8, 8 of the 15-team 2021 pool); in play-in seasons (2026 on) the
         // top 2 get a bye and seeds 3-6 a week-14 play-in, so "playoffs" = top 6 and "bye" = top 2.
         // Pairwise: ahead(a, c) = a's wins + c's losses that lock a ahead of c. A tie in record counts against a, since
-        // the tiebreak (point differential / head-to-head) is not settled until the games are played.
+        // the tiebreak (head-to-head / point differential) is not settled until the games are played.
         // Clinch top K = the (n-K)th smallest ahead(me, other); eliminated from top K = the Kth smallest ahead(other, me).
         // In position for a cut -> the clinch number; outside it -> the elimination number.
         const rule = pic.rules || {};
@@ -547,10 +589,10 @@
                 const others = rows.map((_, j) => j).filter(j => j !== i);
                 if (i < K) {
                     const m = done || K >= n ? 0 : nth(others.map(j => ahead(i, j)), n - K);
-                    return m === 0 ? CLINCHED : `<span class="muted">Clinch</span> <b>${m}</b>`;
+                    return m === 0 ? CLINCHED : `<b class="win" data-tip="Magic number: ${m} combined wins by this team and losses by the team chasing it clinch the spot">${m}</b>`;
                 }
                 const e = done ? 0 : nth(others.map(j => ahead(j, i)), K);
-                return e === 0 ? ELIM : `<span class="muted">Elim</span> <b>${e}</b>`;
+                return e === 0 ? ELIM : `<b class="loss" data-tip="Elimination number: ${e} combined losses by this team and wins by the team ahead of it end the chase">${e}</b>`;
             };
             const heads = [['Playoffs', `Top ${playoffK} in the division${byeK ? ' (bye or play-in)' : ''}: magic number to clinch while in position, elimination number while outside`]];
             if (byeK) heads.push(['Bye', `Top ${byeK} in the division: magic number to clinch the bye while in position, elimination number while outside`]);
@@ -558,8 +600,8 @@
         };
         const firstDiv = Object.values(byDiv)[0];
         const cuts = firstDiv ? cutsOf(firstDiv) : null;
-        const magicNote = !cuts ? '' : `<p class="section-copy" style="max-width:none">Magic numbers: <b>Clinch N</b> = N combined wins by the team and losses by the team chasing it lock the spot;
-            <b>Elim N</b> = N combined losses by the team and wins by the team ahead of it end the chase. ${cuts.byeK
+        const magicNote = !cuts ? '' : `<p class="section-copy" style="max-width:none">Magic numbers: <b class="win">green</b> = combined wins by the team and losses by the team chasing it that clinch the spot;
+            <b class="loss">red</b> = combined losses by the team and wins by the team ahead of it that end the chase. ${cuts.byeK
                 ? `Playoffs = top ${cuts.playoffK} in the division (seeds 1-${cuts.byeK} bye, ${cuts.byeK + 1}-${cuts.playoffK} play in during week 14); Bye = top ${cuts.byeK}.`
                 : `Playoffs = top ${cuts.playoffK} in the division.`}
             A tie in record counts against the team, since the tiebreak is not settled until the games are played.</p>`;
@@ -568,7 +610,7 @@
                 <div class="section-tools" style="margin:0">${seasonSelect()}${regWeeks.length ? `<select class="select" id="standings-week">${regWeeks.map(w =>
                     `<option value="${w}"${w === week ? ' selected' : ''}>Week ${w}</option>`).join('')}</select>` : ''}</div></div>
             ${Object.entries(byDiv).map(([name, rows]) => `<div class="panel"><h3 class="panel-title" style="margin-bottom:12px">${esc(name)}</h3>${standingsTable(rows, 0, magicFor(rows))}</div>`).join('')}
-            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Overall</h3>${standingsTable(pic.standings)}</div></div>`;
+            <div class="panel"><h3 class="panel-title" style="margin-bottom:12px">Overall</h3>${overallTable(pic.standings, week)}</div></div>`;
         bindSeason();
         const wk = document.getElementById('standings-week');
         if (wk) wk.addEventListener('change', e => {
@@ -628,30 +670,31 @@
                 r.pct = n ? (r.w + r.t / 2) / n : 0; r.diff = r.pf - r.pa;
                 return r;
             };
-            // head-to-head between two tied teams: wins minus losses against each other (0 when they have not met or split)
-            const h2h = (a, c) => list.reduce((t, g) => {
-                const mine = g.home === a && g.away === c ? [g.hs, g.aws] : g.away === a && g.home === c ? [g.aws, g.hs] : null;
-                return mine ? t + Math.sign(mine[0] - mine[1]) : t;
-            }, 0);
+            // The league tiebreak, the same rule as the standings and the real bracket (migrate_data_to_sqlite.py
+            // rank_teams): head-to-head first, as a mini-league among only the tied teams (win % in their games against
+            // each other; a team that met none of the others counts as .500), then point differential, then points for.
+            // 2019 alone used points for before point differential.
+            const h2hPct = (r, group) => {
+                let w = 0, n = 0;
+                list.forEach(g => {
+                    const opp = g.home === r.owner ? g.away : g.away === r.owner ? g.home : null;
+                    if (!opp || !group.some(o => o !== r && o.owner === opp)) return;
+                    const [me, them] = g.home === r.owner ? [g.hs, g.aws] : [g.aws, g.hs];
+                    w += me > them ? 1 : me === them ? 0.5 : 0; n++;
+                });
+                return n ? w / n : 0.5;
+            };
             const out = {};
             divNames.forEach(dn => {
                 const rows = divs.filter(d => d.name === dn).map(d => line(d.owner)).sort((x, y) => y.pct - x.pct);
                 const seeded = [];
                 for (let i = 0; i < rows.length;) {                                 // break each tie group on its own
                     let j = i; while (j < rows.length && rows[j].pct === rows[i].pct) j++;
-                    // NFL-style: head-to-head only counts when every tied team has played every other; otherwise
-                    // point differential, then points for, picks the top team. Then start over with the teams left.
-                    const left = rows.slice(i, j);
-                    while (left.length) {
-                        const met = (a, c) => list.some(g => (g.home === a && g.away === c) || (g.home === c && g.away === a));
-                        const allMet = left.every(a => left.every(c => a === c || met(a.owner, c.owner)));
-                        const h2hOf = r => left.reduce((t, o) => o === r ? t : t + h2h(r.owner, o.owner), 0);
-                        // 2026 on: point differential first, then head-to-head; earlier seasons: head-to-head first
-                        const h2hCmp = (x, y) => allMet ? h2hOf(y) - h2hOf(x) : 0;
-                        const pick = left.slice().sort((x, y) => (season >= 2026 ? (y.diff - x.diff) || h2hCmp(x, y) : h2hCmp(x, y) || (y.diff - x.diff))
-                                                                 || y.pf - x.pf || x.owner.localeCompare(y.owner))[0];
-                        seeded.push(pick); left.splice(left.indexOf(pick), 1);
-                    }
+                    const group = rows.slice(i, j);
+                    group.forEach(r => { r.h2h = h2hPct(r, group); });
+                    seeded.push(...group.sort((x, y) => (season === 2021 ? (y.diff - x.diff) || (y.h2h - x.h2h) || (y.pf - x.pf)   // 2021: diff first
+                        : (y.h2h - x.h2h) || (season === 2019 ? (y.pf - x.pf) || (y.diff - x.diff) : (y.diff - x.diff) || (y.pf - x.pf)))
+                        || x.owner.localeCompare(y.owner)));
                     i = j;
                 }
                 seeded.forEach((r, i) => { r.seed = i + 1; r.div = LETTER[dn]; r.key = `${i + 1}${LETTER[dn]}`; out[r.key] = r; });
@@ -705,7 +748,7 @@
                     meta: [through ? `Projected from the standings through week ${through}` : 'No games played yet'] });
         content.innerHTML = `<div class="wrap page-pad">
             <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${season} · if the season ended today</div><h2 class="section-title">Bracket Outlook</h2>
-                <p class="section-copy" style="max-width:none">Seeds by win %, then ${season >= 2026 ? 'point differential, head-to-head among tied teams' : 'head-to-head among tied teams, point differential'} and points for.
+                <p class="section-copy" style="max-width:none">Seeds by win %, then head-to-head among the tied teams (their record against each other), then point differential, then points for.
                 ${before ? `<span class="pj-up">▲</span> / <span class="pj-dn">▼</span> = moved since week ${played[played.length - 2]}.` : ''}</p></div>${seasonSelect()}</div>
             <div class="card-row two" style="margin-top:22px">${seedTable('A')}${seedTable('B')}</div>
             <div class="panel"><h3 class="panel-title" style="margin-bottom:14px">Championship</h3>

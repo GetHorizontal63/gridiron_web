@@ -32,8 +32,9 @@
         return rows(database.exec(sql, params));
     }
 
-    // League tiebreak after record. 2020-2025: head-to-head among the tied teams, point differential, points for.
-    // 2019: head-to-head, points for, point differential. 2026 on: point differential, then head-to-head, then points for.
+    // League tiebreak after record. 2020 on (2026 included): head-to-head among the tied teams, point differential,
+    // points for. 2019: head-to-head, points for, point differential. 2021: point differential, head-to-head, points
+    // for (matches the real 2021 bracket). Same rule as NEW/python/migrate_data_to_sqlite.py rank_teams.
     // h2hOf(a, b) returns {w, l, t} for manager a against manager b (or null). Head-to-head is a mini-league among only
     // the tied teams; teams that never met count as .500.
     function rankByTiebreak(teams, h2hOf, season) {
@@ -55,8 +56,8 @@
                 }));
                 const pf = t => Number(t.pointsFor);
                 const s = Number(season);
-                group.sort((a, b) => s >= 2026
-                    ? (pd(b) - pd(a)) || (pct.get(b) - pct.get(a)) || (pf(b) - pf(a))
+                // 2021 alone: point differential before head-to-head (the real 2021 bracket was seeded that way)
+                group.sort((a, b) => s === 2021 ? (pd(b) - pd(a)) || (pct.get(b) - pct.get(a)) || (pf(b) - pf(a))
                     : (pct.get(b) - pct.get(a)) || (s === 2019 ? (pf(b) - pf(a)) || (pd(b) - pd(a)) : (pd(b) - pd(a)) || (pf(b) - pf(a))));
             }
             ordered.push(...group);

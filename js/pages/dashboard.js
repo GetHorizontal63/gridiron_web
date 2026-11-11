@@ -70,25 +70,20 @@
 
     // ---------------------------------------------------------------- Monte Carlo
     const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
-    // Seeds within one division, the same procedure as the bracket outlook: win %, then head-to-head only when every
-    // tied team has played every other, then point differential, then points for; restart after each pick.
-    function seedDivision(list, st, diffFirst) {             // diffFirst: 2026 on, point differential before head-to-head
+    // Seeds within one division: the league tiebreak, the same rule as the standings, the bracket outlook and the real
+    // bracket (migrate_data_to_sqlite.py rank_teams). Win %, then head-to-head as a mini-league among only the tied
+    // teams (win % in their games against each other; none played = .500), then point differential, then points for
+    // (2019: points for before point differential). st.met counts games between two teams; st.h2h is wins minus losses.
+    function seedDivision(list, st, season) {
         const out = [], rows = list.slice().sort((x, y) => st.w[y] - st.w[x]);
         for (let i = 0; i < rows.length;) {
             let j = i; while (j < rows.length && st.w[rows[j]] === st.w[rows[i]]) j++;
-            const left = rows.slice(i, j);
-            while (left.length) {
-                let allMet = true;
-                for (const a of left) for (const c of left) if (a !== c && !st.met[a][c]) { allMet = false; break; }
-                const h = r => left.reduce((t, o) => o === r ? t : t + st.h2h[r][o], 0);
-                let best = left[0];
-                for (const r of left.slice(1)) {
-                    const hd = allMet ? h(r) - h(best) : 0, pdd = (st.pf[r] - st.pa[r]) - (st.pf[best] - st.pa[best]);
-                    const d = (diffFirst ? pdd || hd : hd || pdd) || st.pf[r] - st.pf[best];
-                    if (d > 0) best = r;
-                }
-                out.push(best); left.splice(left.indexOf(best), 1);
-            }
+            const group = rows.slice(i, j);
+            const h2h = r => { let g = 0, net = 0; group.forEach(o => { if (o !== r) { g += st.met[r][o]; net += st.h2h[r][o]; } }); return g ? (g + net) / (2 * g) : 0.5; };
+            const pd = r => st.pf[r] - st.pa[r];
+            const pct = new Map(group.map(r => [r, h2h(r)]));
+            out.push(...group.sort((x, y) => season === 2021 ? (pd(y) - pd(x)) || (pct.get(y) - pct.get(x)) || (st.pf[y] - st.pf[x])   // 2021: diff first
+                : (pct.get(y) - pct.get(x)) || (season === 2019 ? (st.pf[y] - st.pf[x]) || (pd(y) - pd(x)) : (pd(y) - pd(x)) || (st.pf[y] - st.pf[x]))));
             i = j;
         }
         return out;
@@ -103,7 +98,7 @@
             if (a == null || c == null) return;
             const r = g.pf > g.pa ? 1 : g.pf < g.pa ? -1 : 0;
             base.w[a] += r > 0 ? 1 : r === 0 ? 0.5 : 0; base.pf[a] += g.pf; base.pa[a] += g.pa;
-            base.h2h[a][c] += r; base.met[a][c] = 1; scores[a].push(g.pf);
+            base.h2h[a][c] += r; base.met[a][c] += 1; scores[a].push(g.pf);   // met: games played between the two
         });
         // each team's scoring: its mean so far shrunk toward the league mean (worth 4 games), one shared spread
         const all = scores.flat();
@@ -134,10 +129,10 @@
                     const sa = score(a), sc = score(c);
                     st.pf[a] += sa; st.pa[a] += sc; st.pf[c] += sc; st.pa[c] += sa;
                     if (sa > sc) { st.w[a]++; st.h2h[a][c]++; st.h2h[c][a]--; } else { st.w[c]++; st.h2h[c][a]++; st.h2h[a][c]--; }
-                    st.met[a][c] = st.met[c][a] = 1;
+                    st.met[a][c]++; st.met[c][a]++;
                 });
             });
-            const seeds = model.divs.map(d => seedDivision(d.ids.map(id => idx[id]).filter(v => v != null), st, model.s >= 2026));
+            const seeds = model.divs.map(d => seedDivision(d.ids.map(id => idx[id]).filter(v => v != null), st, model.s));
             seeds.forEach((list, di) => list.forEach((t, si) => {
                 seedCount[t][si + 1]++;
                 const d = model.divs[di];

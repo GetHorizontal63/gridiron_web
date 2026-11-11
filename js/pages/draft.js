@@ -136,7 +136,7 @@
         EX.col('slot_role', 'Fit', 6, false), EX.col('proj_points', 'Proj', 6, true, r => f1(r.proj_points)),
         EX.col('proj_pos_rank', 'Proj rk', 6, true, r => r.proj_pos_rank ? `${r.pos}${r.proj_pos_rank}` : '-'),
         EX.col('pre_pct', 'Day', 5, true, r => ring(r, 'pre', true), r => r.pre_grade || ''),
-        EX.col('actual_points', 'Pts', 6, true, r => f1(r.actual_points)), EX.col('vsProj', '+/- proj', 6, true, r => `<span class="${r.vsProj >= 0 ? 'win' : 'loss'}">${sgn(r.vsProj)}</span>`),
+        EX.col('actual_points', 'Pts', 6, true, r => f1(r.actual_points)), EX.col('vsProj', 'vs Proj', 6, true, r => `<span class="${r.vsProj >= 0 ? 'win' : 'loss'}">${sgn(r.vsProj)}</span>`),
         EX.col('actual_pos_rank', 'Fin rk', 6, true, r => r.actual_pos_rank ? `${r.pos}${r.actual_pos_rank}` : '-'),
         EX.col('post_pct', 'Now', 5, true, r => ring(r, 'post', true), r => r.post_grade || ''),
         EX.col('betterNames', 'Better available', 21, false, r => r.better.length ? r.better.map(x => `${player(x.id)} <span class="muted">${f1(x.pts)}</span>`).join(', ') : '<span class="muted">None: best value left</span>', r => r.betterNames)

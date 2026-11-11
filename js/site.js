@@ -47,11 +47,12 @@
             { key: 'schedule', label: 'Schedule', href: 'pages/past-seasons/schedule.html' },
             { key: 'standings', label: 'Standings', href: 'pages/past-seasons/standings.html' },
             { key: 'trailing', label: 'Trailing Form', href: 'pages/past-seasons/trailing.html' },   // scoring over the last N games as of a week
-            { key: 'playoff-bracket', label: 'Playoff Bracket', href: 'pages/past-seasons/playoff-bracket.html' },
+            // tab: the shorter name in the sub header's tab row (keeps the row on one screen width); the menu keeps label
+            { key: 'playoff-bracket', label: 'Playoff Bracket', tab: 'Bracket', href: 'pages/past-seasons/playoff-bracket.html' },
             { key: 'managers', label: 'Managers', href: 'pages/past-seasons/managers.html' },
             { key: 'transactions', label: 'Transactions', href: 'pages/past-seasons/transactions.html' },   // trades + free agency
-            { key: 'draft', label: 'Draft Grades', href: 'pages/past-seasons/draft.html' },
-            { key: 'all-pro', label: 'All-Pro Teams', href: 'pages/past-seasons/all-pro.html' },
+            { key: 'draft', label: 'Draft Grades', tab: 'Draft', href: 'pages/past-seasons/draft.html' },
+            { key: 'all-pro', label: 'All-Pro Teams', tab: 'All-Pro', href: 'pages/past-seasons/all-pro.html' },
             { key: 'moments', label: 'Historic League Moments', href: 'pages/past-seasons/moments.html', menuOnly: true }   // cross-season: tab only on All Seasons
         ] }
     ];
@@ -179,7 +180,7 @@
     function sectionTabs(sectionKey, activeKey, id) {
         const group = SITE_MAP.find(g => g.key === sectionKey);
         return group.children.filter(c => !c.menuOnly).map(c => ({
-            label: c.label,
+            label: c.tab || c.label,
             href: url(c.href) + ((c.needs || c.carry) && id ? `?${c.needs || c.carry}=${encodeURIComponent(id)}` : ''),
             active: c.key === activeKey
         }));

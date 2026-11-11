@@ -2311,7 +2311,7 @@ a.ap-row:hover{background:var(--hover)}
 /* ---------------------------------------------------------------- Trailing Form (pages/past-seasons/trailing.html) */
 .tf-ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .tf-ctl label,.tf-ctl-one{display:flex;flex-direction:column;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-.tf-ctl .select{min-width:150px}
+.tf-ctl .select{width:150px;min-width:0}   /* fixed: a longer week label never pushes the other controls */
 .tf-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .tf-sub{color:var(--muted);font-size:12px;margin:8px 0 14px;max-width:820px}
 .tf-h4{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin:20px 0 4px}
@@ -2344,18 +2344,6 @@ a.ap-row:hover{background:var(--hover)}
 .tf-med::before{content:"";position:absolute;left:2px;top:0;width:2px;height:22px;background:var(--ink);border-radius:1px}
 .tf-dot{position:absolute;top:7px;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:var(--surface);border:2px solid var(--ink-2);box-shadow:0 0 0 2px var(--surface)}
 .tf-dot:hover{border-color:var(--accent);z-index:2}
-.tf-legend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-top:12px}
-.tf-legend span{display:inline-flex;align-items:center;gap:7px}
-.tf-legend i{display:inline-block;flex-shrink:0}
-.tf-k-dot{width:8px;height:8px;border-radius:50%;border:2px solid var(--ink-2);background:var(--surface)}
-.tf-k-band{width:18px;height:10px;background:rgba(var(--accent-rgb),.16);border:1px solid rgba(var(--accent-rgb),.5);border-radius:2px}
-.tf-k-med{width:2px;height:14px;background:var(--ink)}
-.tf-k-range{width:18px;height:2px;background:var(--line-strong)}
-.tf-k-grid{width:0;height:14px;border-left:1px dashed var(--muted)}
-.tf-k-win,.tf-k-even,.tf-k-loss{width:14px;height:14px;border:1px solid var(--line)}
-.tf-k-win{background:color-mix(in srgb,var(--win) 60%,var(--surface))}
-.tf-k-even{background:var(--surface)}
-.tf-k-loss{background:color-mix(in srgb,var(--loss) 60%,var(--surface))}
 /* head-to-head grid */
 .tf-matrix td.tf-p{text-align:center;padding:0;font-size:11px;font-weight:600;color:var(--ink);border-left:2px solid var(--surface)}
 .tf-matrix td.tf-self{background:var(--surface-2)}
@@ -2363,3 +2351,54 @@ a.ap-row:hover{background:var(--hover)}
 .tf-matrix th.tf-mh img{width:22px;height:22px;object-fit:contain}
 .tf-method ul{margin:12px 0 0 18px;display:grid;gap:8px;font-size:12.5px;color:var(--ink-2);max-width:900px}
 @media (max-width:900px){.tf-two{grid-template-columns:minmax(0,1fr)}}
+/* Trailing Form layout locks: one-line centred headings, a reserved slot for the sort arrow, fixed header row and tiles */
+.tf-t th{white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;padding:0 8px;letter-spacing:.06em}
+.tf-t td{padding:0 8px}
+.tf-t th.num,.tf-t td.num{text-align:center}
+.tf-t th.tf-sortable{position:relative;cursor:pointer;user-select:none}
+.tf-t th.tf-sortable.num{padding:0 12px}                 /* equal room both sides: the label stays centred with or without the arrow */
+.tf-t th.tf-sortable:not(.num){padding-right:12px}
+.tf-arrow{position:absolute;right:1px;top:50%;transform:translateY(-50%);width:10px;text-align:center;font-size:11px;color:var(--ink)}
+.tf-top{display:grid;grid-template-columns:minmax(0,1fr) 480px;gap:28px;align-items:end;margin-top:34px}
+.tf-top-text{min-width:0}
+.tf-top .eyebrow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tf-top .section-copy{max-width:none;height:36px;overflow:hidden}   /* two lines, whatever the settings say */
+.tf-top .tf-ctl{flex-wrap:nowrap;justify-content:flex-end}
+.tf-tiles .stat-tile{height:104px;overflow:hidden}
+.tf-tiles .stat-tile .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:900px){
+    .tf-top{grid-template-columns:minmax(0,1fr)}
+    .tf-top .section-copy{height:auto}
+    .tf-top .tf-ctl{flex-wrap:wrap;justify-content:flex-start}
+}
+
+/* Trailing Form legends: centred under their chart behind a hairline, every swatch in the same 18 x 14 box */
+.tf-legend{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px 30px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair);font-size:11.5px;color:var(--ink-2)}
+.tf-legend > span{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.tf-legend i{position:relative;display:inline-block;width:18px;height:14px;flex:0 0 18px}
+.tf-legend i::before{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-sizing:border-box}
+.tf-k-dot::before{width:9px;height:9px;border-radius:50%;border:2px solid var(--ink-2);background:var(--surface)}
+.tf-k-band::before{width:18px;height:10px;background:rgba(var(--accent-rgb),.16);border:1px solid rgba(var(--accent-rgb),.5);border-radius:2px}
+.tf-k-med::before{width:2px;height:14px;background:var(--ink);border-radius:1px}
+.tf-k-range::before{width:18px;height:2px;background:var(--line-strong);border-radius:1px}
+.tf-k-grid::before{width:0;height:14px;border-left:1px dashed var(--muted)}
+/* head-to-head colour scale: loss colour -> neutral surface -> win colour, the same mix the grid cells use */
+.tf-scale{gap:16px}
+.tf-ramp-wrap{display:inline-flex;flex-direction:column;gap:4px;width:260px}
+.tf-ramp{display:block;height:12px;border:1px solid var(--line);border-radius:2px;
+    background:linear-gradient(90deg,color-mix(in srgb,var(--loss) 70%,var(--surface)),var(--surface) 50%,color-mix(in srgb,var(--win) 70%,var(--surface)))}
+.tf-ramp-ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tf-ramp-ticks b{font-weight:600}
+/* head-to-head: logos centred over their columns (img is display:block site-wide, so text-align alone can't centre it) */
+.tf-matrix th.tf-mh img{margin:0 auto}
+/* Weekly Scoring Position table (score-ranks.js): one-line, centred headings; the rank bands share a group heading */
+.sr-table th{white-space:nowrap;text-overflow:ellipsis;vertical-align:middle;letter-spacing:.06em}
+.sr-table th.num,.sr-table td.num{text-align:center}
+.sr-table thead tr:first-child th{height:30px}
+.sr-table th.sr-group{text-align:center;border-bottom:1px solid var(--line-strong);height:30px}
+.sr-table tr.sr-sub th{height:30px}
+/* explorer tables (Stat Finder, Draft, Transactions): the sort arrow sits in its own spot and never wraps the label */
+.sx-sort{padding-right:16px}
+.sx-sort.asc::after,.sx-sort.desc::after{position:absolute;right:4px;bottom:6px}
+.tf-legend .tf-ramp-wrap{align-items:stretch;gap:5px;width:260px;flex:0 0 260px}   /* the bar and its ticks fill the slot (the legend's centring would shrink them to nothing) */
+.tf-legend .tf-ramp{width:100%}

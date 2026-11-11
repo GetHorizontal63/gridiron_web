@@ -283,7 +283,8 @@
         const word = p < 0.05 ? (up ? 'Hot' : 'Cold') : p < 0.2 ? (up ? 'Warming' : 'Cooling') : 'Steady';
         return `<span class="${p < 0.2 ? (up ? 'tf-hot' : 'tf-cold') : 'muted'}">${word}</span> <span class="muted">· ${pv(p)}</span>`;
     };
-    const th = (k, label, tip, cls = 'num') => `<th class="${cls}${S.sort === k ? ' tf-on' : ''}" data-sort="${k}" data-tip="${esc(tip)}">${label}${S.sort === k ? (S.dir < 0 ? ' ↓' : ' ↑') : ''}</th>`;
+    // the sort arrow sits in its own reserved spot at the heading's right edge: the label never moves or wraps
+    const th = (k, label, tip, cls = 'num') => `<th class="${cls} tf-sortable${S.sort === k ? ' tf-on' : ''}" data-sort="${k}" data-tip="${esc(tip)}">${label}<span class="tf-arrow">${S.sort === k ? (S.dir < 0 ? '↓' : '↑') : ''}</span></th>`;
 
     function leaderboard() {
         const key = SORTS[S.sort];
@@ -292,7 +293,7 @@
             if (typeof a === 'string') return S.dir * a.localeCompare(c);
             if (!Number.isFinite(a) || !Number.isFinite(c)) return Number.isFinite(a) ? -1 : Number.isFinite(c) ? 1 : 0;
             return S.dir * (a - c) || x.rank - y.rank; });
-        return `<div class="table-scroll"><table class="data-table tf-lb" style="min-width:1080px">${SITE.cols('4%', '12%', '6%', '5%', '6%', '5%', '5%', '5%', '6%', '5%', '6%', '6%', '6%', '5%', '6%', '12%')}<thead><tr>
+        return `<div class="table-scroll"><table class="data-table tf-t tf-lb" style="min-width:1080px">${SITE.cols('3%', '10%', '6%', '5%', '6%', '5%', '5%', '5%', '8%', '5%', '7%', '7%', '6%', '5%', '6%', '11%')}<thead><tr>
             <th class="num">#</th>${th('mgr', 'Manager', 'Sort by name', '')}
             ${th('total', 'Total', `Points over the last ${S.n} games through the as-of week`)}
             ${th('avg', 'Avg', 'Average points per game in the window')}
@@ -301,11 +302,11 @@
             ${th('lo', 'Low', 'Lowest score in the window')}${th('hi', 'High', 'Highest score in the window')}
             ${th('ap', 'All-play', 'Share of the league each score would have beaten that week (ties count half): record with the schedule luck taken out')}
             ${th('wl', 'W-L', 'Actual record in the window')}
-            ${th('season', 'Season avg', 'Average over every game this season through the as-of week')}
-            ${th('delta', 'vs Before', 'Window average minus the average of the team\'s earlier games this season')}
+            ${th('season', 'Season', 'Season average: every game this season through the as-of week')}
+            ${th('delta', 'Change', 'Window average minus the average of the team\'s earlier games this season')}
             ${th('trend', 'Trend', 'Least-squares slope through the window: points gained (or lost) per game, game to game')}
-            ${th('z', 'z', 'Standard deviations above or below the league\'s average trailing average')}
-            ${th('pct', 'All-time pct', `Where this ${S.n}-game total ranks among every ${S.n}-game stretch on file (all seasons)`)}
+            ${th('z', 'Z', 'z-score: standard deviations above or below the league\'s average trailing average')}
+            ${th('pct', 'Hist %', `All-time percentile: where this ${S.n}-game total ranks among every ${S.n}-game stretch on file (all seasons)`)}
             ${th('form', 'Form', 'Welch t-test of the window against the team\'s earlier games this season. Hot / Cold: p < .05; Warming / Cooling: p < .20')}
             </tr></thead><tbody>${list.map(t => `<tr class="${t.mgr === S.focus ? 'tf-sel' : ''}">
                 <td class="num">${t.rank}</td><td data-tip="${esc(`${t.mgr}: ${wkSpan(t.from, t.to)}`)}">${who(t.mgr)}</td>
@@ -321,17 +322,19 @@
         const T = V.teams, by = (f, dir = -1) => T.filter(t => Number.isFinite(f(t))).sort((x, y) => dir * (f(x) - f(y)))[0];
         const lead = by(t => t.total), hot = by(t => t.test ? t.delta : NaN), cold = by(t => t.test ? t.delta : NaN, 1);
         const steady = by(t => t.W.length >= 3 ? t.sd : NaN, 1), wild = by(t => t.W.length >= 3 ? t.sd : NaN), ap = by(t => t.allPlay);
+        // always the same 8 tiles in the same places: a tile with nothing to show yet keeps its slot with a dash
         const tile = (l, v, s, tip) => `<div class="stat-tile"><div class="v">${v}</div><div class="l" data-tip="${esc(tip)}">${l}</div><div class="s">${s}</div></div>`;
         const bt = V.bt.byN[S.n];
+        const EARLIER = 'Needs 2+ games before the window', THREE = 'Needs a window of 3+ games';
         return `<div class="stat-tiles tiles-4 tf-tiles">
-            ${lead ? tile(`Top ${S.n}-game scorer`, f1(lead.total), `${esc(lead.mgr)} · ${f1(lead.avg)} a game · ${wkSpan(lead.from, lead.to)}`, 'Most points over the window') : ''}
-            ${ap ? tile('Best all-play', pc(ap.allPlay, 1), `${esc(ap.mgr)} · share of the league outscored`, 'Highest share of the league outscored, week by week, across the window (ties count half)') : ''}
-            ${tile('League trailing avg', f1(V.lgMean), `SD between teams ${f1(V.lgSd)}`, 'Average of every team\'s trailing average, and how spread out the teams are')}
-            ${hot ? tile('Biggest jump', sgn(hot.delta), `${esc(hot.mgr)} · ${pv(hot.test.p)}`, 'Largest rise of the window average over the team\'s earlier games this season') : ''}
-            ${cold ? tile('Biggest drop', sgn(cold.delta), `${esc(cold.mgr)} · ${pv(cold.test.p)}`, 'Largest fall of the window average below the team\'s earlier games this season') : ''}
-            ${steady ? tile('Steadiest', f1(steady.sd), `${esc(steady.mgr)} · SD in the window`, 'Smallest standard deviation over the window (3+ games)') : ''}
-            ${wild ? tile('Most volatile', f1(wild.sd), `${esc(wild.mgr)} · SD in the window`, 'Largest standard deviation over the window (3+ games)') : ''}
-            ${bt ? tile(`Model miss, ${S.n} games`, `±${f1(bt.sigma)}`, `Raw average misses by ±${f1(bt.rmse)} · r ${bt.r.toFixed(2)}`, `League history: how far the model's expected score lands from the next game (RMSE), against the raw ${S.n}-game average's miss, and how closely the raw average tracks the next score`) : ''}
+            ${tile('Top scorer', lead ? f1(lead.total) : '-', lead ? `${esc(lead.mgr)} · ${f1(lead.avg)} a game · ${wkSpan(lead.from, lead.to)}` : '-', 'Most points over the window')}
+            ${tile('Best all-play', ap ? pc(ap.allPlay, 1) : '-', ap ? `${esc(ap.mgr)} · share of the league outscored` : '-', 'Highest share of the league outscored, week by week, across the window (ties count half)')}
+            ${tile('League average', f1(V.lgMean), `Trailing average · SD between teams ${f1(V.lgSd)}`, 'Average of every team\'s trailing average, and how spread out the teams are')}
+            ${tile('Biggest jump', hot ? sgn(hot.delta) : '-', hot ? `${esc(hot.mgr)} · ${pv(hot.test.p)}` : EARLIER, 'Largest rise of the window average over the team\'s earlier games this season')}
+            ${tile('Biggest drop', cold ? sgn(cold.delta) : '-', cold ? `${esc(cold.mgr)} · ${pv(cold.test.p)}` : EARLIER, 'Largest fall of the window average below the team\'s earlier games this season')}
+            ${tile('Steadiest', steady ? f1(steady.sd) : '-', steady ? `${esc(steady.mgr)} · SD in the window` : THREE, 'Smallest standard deviation over the window (3+ games)')}
+            ${tile('Most volatile', wild ? f1(wild.sd) : '-', wild ? `${esc(wild.mgr)} · SD in the window` : THREE, 'Largest standard deviation over the window (3+ games)')}
+            ${tile('Model miss', bt ? `±${f1(bt.sigma)}` : '-', bt ? `Raw average misses by ±${f1(bt.rmse)} · r ${bt.r.toFixed(2)}` : '-', `League history: how far the model's expected score lands from the next game (RMSE), against the raw ${S.n}-game average's miss, and how closely the raw average tracks the next score`)}
         </div>`;
     }
 
@@ -362,7 +365,7 @@
         const have = V.played;
         const actRank = {};
         if (have) Object.entries(V.actual).sort((x, y) => y[1] - x[1]).forEach(([m], i) => { actRank[m] = i + 1; });
-        const fieldTable = `<div class="table-scroll"><table class="data-table" style="min-width:1060px">${SITE.cols('17%', '8%', '7%', '9%', '9%', '9%', '8%', '8%', '9%', '16%')}<thead><tr>
+        const fieldTable = `<div class="table-scroll"><table class="data-table tf-t" style="min-width:1060px">${SITE.cols('17%', '8%', '7%', '9%', '9%', '9%', '8%', '8%', '9%', '16%')}<thead><tr>
             <th>Manager</th><th class="num" data-tip="Model's expected score: the trailing average pulled toward this season's league average by the carry-over share history supports">Expected</th><th class="num" data-tip="Model's spread (σ) for this team: the model's typical miss for this window, scaled by the team's own volatility this season">Spread</th>
             <th class="num" data-tip="Chance of the week's highest score among the teams playing">Top score</th><th class="num" data-tip="Chance of finishing in the top half of the week's scores">Top half</th>
             <th class="num" data-tip="Chance of the week's lowest score">Low score</th><th class="num" data-tip="Chance of 150 or more points">150+</th><th class="num" data-tip="Chance of fewer than 100 points">Under 100</th>
@@ -384,7 +387,7 @@
         }).join('');
         const pk = V.picksW + V.picksL;
         return `${V.pairs.length ? `<h4 class="tf-h4">${esc(V.nextLabel)} matchups</h4>
-            <div class="table-scroll"><table class="data-table" style="min-width:820px">${SITE.cols('24%', '24%', '12%', '12%', '28%')}<thead><tr><th>Form favorite</th><th>Underdog</th>
+            <div class="table-scroll"><table class="data-table tf-t" style="min-width:820px">${SITE.cols('24%', '24%', '12%', '12%', '28%')}<thead><tr><th>Form favorite</th><th>Underdog</th>
                 <th class="num" data-tip="Difference in the model's expected scores (trailing averages after regression to the mean)">Edge</th><th class="num" data-tip="Chance the favorite outscores the underdog: Normal model, both teams' spreads combined">Win chance</th><th>Result</th></tr></thead>
                 <tbody>${games}</tbody></table></div>` : ''}
             <p class="tf-sub">${pk ? `Form favorites (higher ${S.n}-game average going in) are <b>${V.picksW}-${V.picksL}</b> (${pc(V.picksW / pk, 1)}) in ${season} games through week ${S.week}.` : ''}
@@ -401,25 +404,26 @@
             const bg = p >= 0.5 ? `color-mix(in srgb, var(--win) ${k}%, var(--surface))` : `color-mix(in srgb, var(--loss) ${k}%, var(--surface))`;
             return `<td class="tf-p" style="background:${bg}" data-tip="${esc(`${a.mgr} beats ${c.mgr}: ${odds(p)}`)}">${Math.round(p * 100)}</td>`;
         };
-        return `<div class="table-scroll"><table class="data-table tf-matrix" style="min-width:${180 + n * 44}px">${SITE.cols('16%', ...T.map(() => `${w}%`))}<thead><tr><th>Row beats column</th>
+        return `<div class="table-scroll"><table class="data-table tf-t tf-matrix" style="min-width:${180 + n * 44}px">${SITE.cols('16%', ...T.map(() => `${w}%`))}<thead><tr><th>Row beats column</th>
             ${T.map(t => `<th class="tf-mh" data-tip="${esc(t.mgr)}"><img src="${GT.logo(t.mgr)}" alt="${esc(t.mgr)}"></th>`).join('')}</tr></thead><tbody>
             ${T.map(a => `<tr class="${a.mgr === S.focus ? 'tf-sel' : ''}"><td>${who(a.mgr)}</td>${T.map(c => cell(a, c)).join('')}</tr>`).join('')}</tbody></table></div>
-            <div class="tf-legend"><span><i class="tf-k-win"></i>Row team favored</span><span><i class="tf-k-even"></i>Even</span><span><i class="tf-k-loss"></i>Column team favored</span>
-                <span>Numbers are win chances in percent. Deeper colour = bigger edge.</span></div>`;
+            <div class="tf-legend tf-scale"><span>Column team favored</span>
+                <span class="tf-ramp-wrap"><span class="tf-ramp"></span><span class="tf-ramp-ticks"><b>0%</b><b>50%</b><b>100%</b></span></span>
+                <span>Row team favored</span></div>`;
     }
 
     function predictive() {
         const bt = V.bt.byN, Ns = [...Array.from({ length: NMAX }, (_, i) => i + 1), 'S'];
         const best = Ns.reduce((m, N) => bt[N].sigma < bt[m].sigma ? N : m, 1);
         const name = N => N === 'S' ? 'Season to date' : `Last ${N} game${N === 1 ? '' : 's'}`;
-        const table = `<div class="table-scroll"><table class="data-table" style="min-width:1000px">${SITE.cols('16%', '8%', '7%', '8%', '7%', '7%', '7%', '8%', '8%', '9%', '7%', '8%')}<thead><tr>
+        const table = `<div class="table-scroll"><table class="data-table tf-t" style="min-width:1000px">${SITE.cols('16%', '8%', '7%', '8%', '7%', '7%', '7%', '8%', '8%', '9%', '7%', '8%')}<thead><tr>
             <th>Predictor</th><th class="num" data-tip="Games predicted (completed seasons; a team needs N earlier games that season)">Games</th>
             <th class="num" data-tip="Raw trailing average: mean absolute miss of the next score, in points">MAE</th>
             <th class="num" data-tip="Raw trailing average: root mean square miss of the next score">RMSE</th>
             <th class="num" data-tip="Average of next score minus the raw trailing average: positive = scores tend to beat it">Bias</th>
             <th class="num" data-tip="Correlation between the raw trailing average and the next score">r</th><th class="num" data-tip="Share of next-week score variation the raw trailing average explains">R²</th>
-            <th class="num" data-tip="Share of a team's distance from the league average that carries into the next game (1 = all of it, 0 = none). The model's expected score keeps only this share (β in the method notes).">Carry-over</th>
-            <th class="num" data-tip="The model's miss (RMSE) after regressing toward the league average: the σ used for every probability on this page">Model miss</th>
+            <th class="num" data-tip="Share of a team's distance from the league average that carries into the next game (1 = all of it, 0 = none). The model's expected score keeps only this share (β in the method notes).">Carry</th>
+            <th class="num" data-tip="Model miss: the model's RMSE after regressing toward the league average, the σ used for every probability on this page">Model ±</th>
             <th class="num" data-tip="Games where the team with the higher trailing average won">Fav W-L</th><th class="num">Fav %</th>
             <th class="num" data-tip="Brier score of the model's win chances (lower is better; 0.25 = calling every game a coin flip)">Brier</th></tr></thead><tbody>
             ${Ns.map(N => { const x = bt[N], g = x.right + x.wrong;
@@ -429,7 +433,7 @@
                     <td class="num">${x.right}-${x.wrong}</td><td class="num">${pc(x.right / g, 1)}</td><td class="num">${x.brier.toFixed(3)}</td></tr>`; }).join('')}
             </tbody></table></div>`;
         const cal = bt[S.n].cal;
-        const calTable = `<div class="table-scroll"><table class="data-table" style="min-width:520px">${SITE.cols('28%', '16%', '20%', '18%', '18%')}<thead><tr>
+        const calTable = `<div class="table-scroll"><table class="data-table tf-t" style="min-width:520px">${SITE.cols('28%', '16%', '20%', '18%', '18%')}<thead><tr>
             <th>Favorite's chance</th><th class="num">Games</th><th class="num" data-tip="Average win chance the model gave the favorites in this band">Predicted</th>
             <th class="num" data-tip="How often those favorites actually won">Actual</th><th class="num" data-tip="Actual minus predicted: positive = the model undersold the favorites">Gap</th></tr></thead><tbody>
             ${cal.map(c => `<tr><td>${Math.round(c.lo * 100)}-${Math.min(100, Math.round(c.hi * 100))}%</td><td class="num">${c.n}</td>
@@ -450,7 +454,7 @@
     function records() {
         const { list } = stretches(S.games, S.n);
         const best = list.slice().sort((x, y) => y.total - x.total).slice(0, 10), worst = list.slice().sort((x, y) => x.total - y.total).slice(0, 10);
-        const tbl = (L, title) => `<div><h4 class="tf-h4">${title}</h4><div class="table-scroll"><table class="data-table" style="min-width:440px">${SITE.cols('8%', '38%', '14%', '18%', '22%')}<thead><tr>
+        const tbl = (L, title) => `<div><h4 class="tf-h4">${title}</h4><div class="table-scroll"><table class="data-table tf-t" style="min-width:440px">${SITE.cols('8%', '38%', '14%', '18%', '22%')}<thead><tr>
             <th class="num">#</th><th>Manager</th><th class="num">Season</th><th>Weeks</th><th class="num">Total (avg)</th></tr></thead><tbody>
             ${L.map((x, i) => `<tr class="${x.season === season ? 'tf-sel' : ''}"><td class="num">${i + 1}</td><td>${who(x.mgr)}</td><td class="num">${x.season}</td><td>${wkSpan(x.from, x.to)}</td>
                 <td class="num"><b>${f1(x.total)}</b> <span class="muted">(${f1(x.total / S.n)})</span></td></tr>`).join('')}</tbody></table></div></div>`;
@@ -502,10 +506,10 @@
         const focusName = S.focus && V.teams.some(t => t.mgr === S.focus) ? S.focus : V.teams[0].mgr;
         const label = GT.periodLabel(V.periodOf[S.week], S.week);
         content.innerHTML = `<div class="wrap page-pad">
-            <div class="panel-head" style="margin-top:34px"><div><div class="eyebrow">${season} · as of ${esc(label)} · last ${S.n} game${S.n === 1 ? '' : 's'}</div><h2 class="section-title">Trailing Form</h2>
-                <p class="section-copy" style="max-width:640px">Each manager's last ${S.n} game${S.n === 1 ? '' : 's'} played on or before the chosen week, ${S.games === 'reg' ? 'regular season only' : 'playoffs and Gulag included'}. A team that sat out a week (a bye) reaches back one more week.</p></div>
+            <div class="tf-top"><div class="tf-top-text"><div class="eyebrow">${season} · as of ${esc(label)} · last ${S.n} game${S.n === 1 ? '' : 's'}</div><h2 class="section-title">Trailing Form</h2>
+                <p class="section-copy">Each manager's last ${S.n} game${S.n === 1 ? '' : 's'} played on or before the chosen week, ${S.games === 'reg' ? 'regular season only' : 'playoffs and Gulag included'}. A team that sat out a week (a bye) reaches back one more week.</p></div>
                 <div class="tf-ctl">
-                    <label>As of<select class="select" id="tf-week">${V.weeks.map(w => `<option value="${w}"${w === S.week ? ' selected' : ''}>${esc(GT.periodLabel(V.periodOf[w], w))}</option>`).join('')}</select></label>
+                    <label>As of<select class="select" id="tf-week">${V.weeks.map(w => `<option value="${w}"${w === S.week ? ' selected' : ''}>Week ${w}${V.periodOf[w] === 'Regular' ? '' : ' · Post'}</option>`).join('')}</select></label>
                     <label>Window<select class="select" id="tf-n">${Array.from({ length: NMAX }, (_, i) => i + 1).map(n => `<option value="${n}"${n === S.n ? ' selected' : ''}>Last ${n} game${n === 1 ? '' : 's'}</option>`).join('')}</select></label>
                     <label>Games<span class="seg seg-eq" id="tf-games"><button data-k="all" class="${S.games === 'all' ? 'on' : ''}">All</button><button data-k="reg" class="${S.games === 'reg' ? 'on' : ''}">Regular</button></span></label>
                 </div></div>
@@ -516,7 +520,7 @@
                 <div id="tf-chart" class="tf-chart" role="img" aria-label="Rolling ${S.n}-game scoring average by week for every manager"></div></div>
             <div class="panel"><h3 class="panel-title">Spread in the Window</h3><p class="tf-sub">Every score in each manager's window on one scale, sorted by median. A wide band means boom-or-bust; a tight cluster means you know what you're getting.</p>${strip()}</div>
             <div class="panel"><h3 class="panel-title">${V.pairs.length ? `Next Up: ${esc(V.nextLabel)}` : 'Odds From Here'}</h3>${nextWeek()}</div>
-            <div class="panel"><h3 class="panel-title">Head-to-Head Odds</h3><p class="tf-sub">Chance each team (row) outscores each other team (column) if they met next week, from current form. Sorted by trailing average.</p>${matrix()}</div>
+            <div class="panel"><h3 class="panel-title">Head-to-Head Odds</h3><p class="tf-sub">Chance, in percent, that each team (row) outscores each other team (column) if they met next week, from current form. Sorted by expected score; the deeper the colour, the bigger the edge.</p>${matrix()}</div>
             <div class="panel"><h3 class="panel-title">Does Trailing Form Predict Anything?</h3>${predictive()}</div>
             <div class="panel"><h3 class="panel-title">${S.n}-Game Stretches on File</h3>${records()}</div>
             <div class="panel tf-method"><h3 class="panel-title">How It's Calculated</h3><ul>

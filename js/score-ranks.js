@@ -54,10 +54,12 @@ window.SR = (() => {
                                    : '<td class="num muted">-</td>';
 
     function table(lines, { focus = null, link = n => esc(n) } = {}) {
-        return `<div class="table-scroll"><table class="data-table sr-table" style="min-width:1040px">${SITE.cols('4%', '14%', '5%', '7%', '6%', '6%', '7%', '5%', '8%', '6%', '6%', '6.5%', '6.5%', '6.5%', '6.5%')}
-            <thead><tr><th class="num">#</th><th>Manager</th><th class="num">GP</th><th class="num">Avg rank</th><th class="num">Top</th><th class="num">Top 3</th>
-                <th class="num">Bottom 3</th><th class="num">Last</th><th class="num">All-play</th><th class="num">PCT</th><th class="num">Luck</th>
-                ${QUADS.map(l => `<th class="num" title="Win PCT in weeks the score ranked ${l}">PCT ${l.replace('-', '‑')}</th>`).join('')}</tr></thead><tbody>
+        // two header rows: the four rank bands sit under one "Win PCT by weekly score rank" heading, so every label fits on one line
+        const H = (label, cls = 'num') => `<th class="${cls}" rowspan="2">${label}</th>`;
+        return `<div class="table-scroll"><table class="data-table sr-table" style="min-width:1040px">${SITE.cols('4%', '13%', '5%', '8%', '5%', '6%', '8%', '5%', '8%', '6%', '6%', '6.5%', '6.5%', '6.5%', '6.5%')}
+            <thead><tr>${H('#')}${H('Manager', '')}${H('GP')}${H('Avg rank')}${H('Top')}${H('Top 3')}${H('Bottom 3')}${H('Last')}${H('All-play')}${H('PCT')}${H('Luck')}
+                <th class="sr-group" colspan="4">Win PCT by weekly score rank</th></tr>
+                <tr class="sr-sub">${QUADS.map(l => `<th class="num" title="Win PCT in weeks the score ranked ${l}">${l.replace('-', '‑')}</th>`).join('')}</tr></thead><tbody>
             ${lines.map(m => `<tr class="${m.id === focus ? 'me' : ''}"${m.ranked ? '' : ' style="opacity:.55"'}>
                 <td class="num muted">${m.pos ?? '-'}</td><td><span class="team-cell"><img src="${GT.logo(m.name)}" alt="">${link(m.name)}</span></td>
                 <td class="num">${m.games}</td><td class="num">${m.avgRank.toFixed(1)}</td><td class="num">${m.top1}</td><td class="num">${m.top3}</td>
