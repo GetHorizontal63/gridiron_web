@@ -46,6 +46,7 @@
             { key: 'overview', label: 'Overview', href: 'pages/past-seasons/overview.html' },
             { key: 'schedule', label: 'Schedule', href: 'pages/past-seasons/schedule.html' },
             { key: 'standings', label: 'Standings', href: 'pages/past-seasons/standings.html' },
+            { key: 'trailing', label: 'Trailing Form', href: 'pages/past-seasons/trailing.html' },   // scoring over the last N games as of a week
             { key: 'playoff-bracket', label: 'Playoff Bracket', href: 'pages/past-seasons/playoff-bracket.html' },
             { key: 'managers', label: 'Managers', href: 'pages/past-seasons/managers.html' },
             { key: 'transactions', label: 'Transactions', href: 'pages/past-seasons/transactions.html' },   // trades + free agency
@@ -59,7 +60,11 @@
                          ['player-regression', 'Player Regression', 'pages/player-regression.html'], ['schedule-luck', 'Schedule Luck', 'pages/schedule-luck.html'],
                          ['lineup-regret', 'Lineup Regret', 'pages/lineup-regret.html']];
     const statsTabs = active => STATS_PAGES.map(([k, label, href]) => ({ label, href: ROOT + href, active: k === active }));
-    const NAV = [{ key: 'feed', label: 'Stats', href: 'pages/stats.html' }, ...SITE_MAP.filter(g => !g.hidden).map(({ key, label, href }) => ({ key, label, href })),
+    // Current Season: the season pages with no ?season= (they default to the newest season), so the link never goes stale.
+    // It sits just before Past Seasons and is the active section whenever a season page shows the current season.
+    const CURRENT = { key: 'current', label: 'Current Season', href: 'pages/past-seasons/overview.html' };
+    const NAV = [{ key: 'feed', label: 'Stats', href: 'pages/stats.html' },
+                 ...SITE_MAP.filter(g => !g.hidden).flatMap(({ key, label, href }) => key === 'competitions' ? [CURRENT, { key, label, href }] : [{ key, label, href }]),
                  { key: 'watch', label: 'Watch', href: 'pages/past-seasons/watch.html' }];   // live TV (current season): its own section
 
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -68,6 +73,13 @@
     const body = document.body;
     const section = body.dataset.section || '';
     const page = body.dataset.page || '';
+    // a season page (not the All Seasons list, the cross-season Moments, or Game Center, which is picked by ?id= and can be
+    // any season's game) showing the current season: no ?season=, or ?season= equal to the newest season (known once
+    // data.js calls setSeason)
+    let currentSeason = null;
+    const seasonPage = section === 'competitions' && !['index', 'moments', 'game-center'].includes(page);
+    const onCurrentSeason = () => seasonPage && (!param('season') || (currentSeason != null && Number(param('season')) === Number(currentSeason)));
+    const navKey = () => onCurrentSeason() ? 'current' : section;
 
     const brand = (dark) => `<a class="brand" href="${url('index.html')}" aria-label="Grass Touchers home">
         <img src="${url('assets/logos/logo_2.png')}" alt="">
@@ -92,7 +104,7 @@
         <header class="site-header"><div class="wrap">
             ${brand()}
             <nav class="main-nav" aria-label="Main">
-                ${NAV.map(n => `<a href="${url(n.href)}" class="${n.key === section ? 'active' : ''}">${esc(n.label)}</a>`).join('')}
+                ${NAV.map(n => `<a href="${url(n.href)}" data-nav="${n.key}" class="${n.key === navKey() ? 'active' : ''}">${esc(n.label)}</a>`).join('')}
             </nav>
             <div class="header-actions">
                 <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false"><span></span></button>
@@ -102,7 +114,7 @@
         <aside class="drawer" id="drawer" aria-label="Site map">
             <div class="drawer-head">${brand(true)}<button class="drawer-close" id="drawer-close" aria-label="Close menu">×</button></div>
             <div class="drawer-top">
-                <a href="${url('index.html')}">Home</a><a href="${url('pages/search.html')}">Search</a><a href="${url('pages/stats.html')}">Stats</a><a href="${url('pages/past-seasons/watch.html')}">Watch</a><a href="${url('pages/app.html')}">Get the App</a>
+                <a href="${url('index.html')}">Home</a><a href="${url(CURRENT.href)}">Current Season</a><a href="${url('pages/search.html')}">Search</a><a href="${url('pages/stats.html')}">Stats</a><a href="${url('pages/past-seasons/watch.html')}">Watch</a><a href="${url('pages/app.html')}">Get the App</a>
             </div>
             ${SITE_MAP.filter(g => !g.hidden).map(g => `<div class="drawer-group">
                 <a href="${url(g.href)}">${esc(g.label)}</a>
@@ -149,6 +161,8 @@
     function subHeader({ crumbs = [], tabs = [], action = null }) {
         const holder = document.getElementById('sub-header');
         if (!holder) return;
+        // the current season's pages hang off Current Season, not Past Seasons
+        if (onCurrentSeason() && crumbs.length && crumbs[0][0] === 'Past Seasons') crumbs = [['Current Season', url(CURRENT.href)], ...crumbs.slice(1)];
         holder.innerHTML = `<div class="sub-header"><div class="wrap">
             <div class="crumbs">${crumbs.map(([label, href], i) =>
                 (i ? '<span class="sep">/</span>' : '') +
@@ -256,6 +270,8 @@
     function setSeason(season) {
         const el = document.getElementById('util-season');
         if (el) el.innerHTML = `Season <b>${esc(season)}</b>`;
+        currentSeason = season;                                  // ?season=<current> now counts as Current Season too
+        document.querySelectorAll('.main-nav a[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === navKey()));
     }
 
     // <colgroup> with fixed widths, e.g. cols('34%', '8%', ...): tables never size columns to their content

@@ -2307,3 +2307,59 @@ a.ap-row:hover{background:var(--hover)}
     .mr-d-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
     .mr-log b{font-size:8px}
 }
+
+/* ---------------------------------------------------------------- Trailing Form (pages/past-seasons/trailing.html) */
+.tf-ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.tf-ctl label,.tf-ctl-one{display:flex;flex-direction:column;gap:5px;font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.tf-ctl .select{min-width:150px}
+.tf-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.tf-sub{color:var(--muted);font-size:12px;margin:8px 0 14px;max-width:820px}
+.tf-h4{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin:20px 0 4px}
+.tf-tiles{margin-top:22px}
+.tf-tiles .stat-tile .v{font-size:32px}
+.tf-chart{height:400px;margin-top:6px}
+.tf-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+.data-table th[data-sort]{cursor:pointer;user-select:none}
+.data-table th.tf-on{color:var(--ink)}
+.data-table tr.tf-sel td{background:var(--hover);font-weight:700}
+.tf-hot{color:var(--win);font-weight:700}
+.tf-cold{color:var(--loss);font-weight:700}
+/* dot strip: fixed 36px rows, one shared scale */
+.tf-strip{margin-top:4px}
+.tf-srow{display:grid;grid-template-columns:170px minmax(0,1fr) 70px;align-items:center;gap:14px;height:36px;border-bottom:1px solid var(--hair)}
+.tf-srow.tf-sel{background:var(--hover)}
+.tf-srow .team-cell{display:flex;align-items:center;gap:9px;min-width:0;font-size:12px}
+.tf-srow .team-cell img{width:20px;height:20px;object-fit:contain;flex-shrink:0}
+.tf-srow .team-cell span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tf-axis{height:24px;border-bottom:1px solid var(--line)}
+.tf-track{position:relative;height:22px}
+.tf-axis .tf-track{height:24px}
+.tf-tick{position:absolute;bottom:4px;transform:translateX(-50%);font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tf-sv{text-align:right;font-size:12px;font-variant-numeric:tabular-nums}
+.tf-grid{position:absolute;top:-7px;bottom:-7px;width:8px;margin-left:-4px;border-left:0}
+.tf-grid::before{content:"";position:absolute;left:4px;top:0;bottom:0;border-left:1px dashed var(--muted)}
+.tf-range{position:absolute;top:10px;height:2px;background:var(--line-strong);border-radius:1px}
+.tf-band{position:absolute;top:4px;height:14px;background:rgba(var(--accent-rgb),.16);border:1px solid rgba(var(--accent-rgb),.5);border-radius:2px}
+.tf-med{position:absolute;top:0;width:6px;margin-left:-3px;height:22px}
+.tf-med::before{content:"";position:absolute;left:2px;top:0;width:2px;height:22px;background:var(--ink);border-radius:1px}
+.tf-dot{position:absolute;top:7px;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:var(--surface);border:2px solid var(--ink-2);box-shadow:0 0 0 2px var(--surface)}
+.tf-dot:hover{border-color:var(--accent);z-index:2}
+.tf-legend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--muted);margin-top:12px}
+.tf-legend span{display:inline-flex;align-items:center;gap:7px}
+.tf-legend i{display:inline-block;flex-shrink:0}
+.tf-k-dot{width:8px;height:8px;border-radius:50%;border:2px solid var(--ink-2);background:var(--surface)}
+.tf-k-band{width:18px;height:10px;background:rgba(var(--accent-rgb),.16);border:1px solid rgba(var(--accent-rgb),.5);border-radius:2px}
+.tf-k-med{width:2px;height:14px;background:var(--ink)}
+.tf-k-range{width:18px;height:2px;background:var(--line-strong)}
+.tf-k-grid{width:0;height:14px;border-left:1px dashed var(--muted)}
+.tf-k-win,.tf-k-even,.tf-k-loss{width:14px;height:14px;border:1px solid var(--line)}
+.tf-k-win{background:color-mix(in srgb,var(--win) 60%,var(--surface))}
+.tf-k-even{background:var(--surface)}
+.tf-k-loss{background:color-mix(in srgb,var(--loss) 60%,var(--surface))}
+/* head-to-head grid */
+.tf-matrix td.tf-p{text-align:center;padding:0;font-size:11px;font-weight:600;color:var(--ink);border-left:2px solid var(--surface)}
+.tf-matrix td.tf-self{background:var(--surface-2)}
+.tf-matrix th.tf-mh{text-align:center;padding:0 0 6px}
+.tf-matrix th.tf-mh img{width:22px;height:22px;object-fit:contain}
+.tf-method ul{margin:12px 0 0 18px;display:grid;gap:8px;font-size:12.5px;color:var(--ink-2);max-width:900px}
+@media (max-width:900px){.tf-two{grid-template-columns:minmax(0,1fr)}}
