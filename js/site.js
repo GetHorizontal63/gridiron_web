@@ -28,8 +28,8 @@
         ] },
         { key: 'recordbook', label: 'Recordbook', href: 'pages/recordbook/league-records.html', children: [
             { key: 'league-records', label: 'League Records', href: 'pages/recordbook/league-records.html' },
-            { key: 'single-game', label: 'Single Game', href: 'pages/recordbook/single-game.html' },
             { key: 'single-season', label: 'Single Season', href: 'pages/recordbook/single-season.html' },
+            { key: 'single-game', label: 'Single Game', href: 'pages/recordbook/single-game.html' },
             { key: 'record-vs-playoffs', label: 'Record vs. Playoffs', href: 'pages/recordbook/record-vs-playoffs.html' },
             { key: 'scorigami', label: 'Scorigami', href: 'pages/recordbook/scorigami.html' },
             { key: 'cumulative', label: 'Cumulative Points', href: 'pages/recordbook/cumulative.html' }
@@ -58,7 +58,7 @@
     ];
     // the Stats section's pages (its tab row); statsTabs(key) marks one active
     const STATS_PAGES = [['dashboard', 'Dashboard', 'pages/stats.html'], ['stat-finder', 'Stat Finder', 'pages/stat-finder.html'],
-                         ['player-regression', 'Player Regression', 'pages/player-regression.html'], ['schedule-luck', 'Schedule Luck', 'pages/schedule-luck.html'],
+                         ['player-regression', 'Player Regression', 'pages/player-regression.html'], ['schedule-luck', 'Schedule Luck', 'pages/schedule-luck.html'], ['fbs-rankings', 'FBS Rankings', 'pages/fbs-rankings.html'],
                          ['lineup-regret', 'Lineup Regret', 'pages/lineup-regret.html']];
     const statsTabs = active => STATS_PAGES.map(([k, label, href]) => ({ label, href: ROOT + href, active: k === active }));
     // Current Season: the season pages with no ?season= (they default to the newest season), so the link never goes stale.
@@ -287,13 +287,20 @@
 
     // Tooltips: any element with data-tip="..." explains itself on hover (or tap on a phone). One floating box for the
     // whole page, positioned in the viewport, so tables that scroll or clip their cells never cut it off.
+    // Colour words follow the theme: text that names a colour token says what the reader actually sees.
+    // In page text use <span class="cw-accent"></span> (CSS supplies the word, so a theme switch updates it);
+    // in data-tip text use {accent} or {Accent}, filled in when the tooltip opens.
+    const COLOR_WORDS = { light: { accent: 'green', win: 'green', loss: 'red', danger: 'red', 'line-strong': 'grey' },
+                          dark: { accent: 'yellow', win: 'green', loss: 'red', danger: 'red', 'line-strong': 'grey' } };
+    const colorWord = token => (COLOR_WORDS[document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'][token]) || token;
+    const colorText = text => String(text).replace(/\{(accent|win|loss|danger|line-strong)\}/gi, (m, k) => { const w = colorWord(k.toLowerCase()); return k[0] === k[0].toUpperCase() ? w[0].toUpperCase() + w.slice(1) : w; });
     const tipBox = document.createElement('div');
     tipBox.className = 'tipbox';
     tipBox.setAttribute('role', 'tooltip');
     let tipFor = null;
     const showTip = el => {
         tipFor = el;
-        tipBox.textContent = el.dataset.tip;
+        tipBox.textContent = colorText(el.dataset.tip);
         tipBox.classList.add('on');
         const r = el.getBoundingClientRect(), w = tipBox.offsetWidth, h = tipBox.offsetHeight;
         const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
@@ -309,5 +316,5 @@
     renderHeader();
     renderFooter();
     const color = name => getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();   // theme colour, e.g. color('accent')
-    window.SITE = { ROOT, url, esc, param, subHeader, sectionTabs, hero, focusImage, randomBg, bgFocus, statsTabs, setSeason, cols, color, SITE_MAP };
+    window.SITE = { ROOT, url, esc, param, subHeader, sectionTabs, hero, focusImage, randomBg, bgFocus, statsTabs, setSeason, cols, color, colorWord, colorText, SITE_MAP };
 })();

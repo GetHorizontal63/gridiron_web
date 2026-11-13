@@ -68,6 +68,11 @@
     const RESULTS = {};
     const updateRecord = (key, data) => { RESULTS[key] = data; };
     const addRecordCategory = (tab, title, cards, note) => { CATEGORIES[tab].push({ title, cards, note }); };
+    // place a category straight after another one (by title), so related groups stay together whatever order they are computed in
+    const addRecordCategoryAfter = (tab, after, title, cards, note) => {
+        const i = CATEGORIES[tab].findIndex(c => c.title === after);
+        CATEGORIES[tab].splice(i < 0 ? CATEGORIES[tab].length : i + 1, 0, { title, cards, note });
+    };
 
     let leagueScoreData = [];
 
@@ -491,6 +496,130 @@
         }
     }
 
+    // FBS rankings (js/fbs-engine.js, the same weekly BCS-formula rankings as Stats > FBS Rankings). Weekly counts and
+    // streaks run over every ranked week on file (week 1 to week N-1 of each season, the season in progress included);
+    // streaks carry over from one season into the next. Title games and final rankings: completed seasons only.
+    const FBS_NOTE = 'FBS rankings are the weekly BCS-formula standings from Stats > FBS Rankings: polls, computers, strength of schedule, losses and quality wins, ranked every week from week 1 to the week before the final week. The FBS title game is the final No. 1 against the final No. 2 on the scores they posted in the final week. Streaks count consecutive ranked weeks and carry over into the next season.';
+    const FBS_FROM_WEEK = 4;
+    async function calculateFbsRecords(tab) {
+        if ((tab !== 'league-records' && tab !== 'single-season') || !window.FbsEngine) return;
+        try {
+            const E = await FbsEngine.load();
+            const asc = E.seasons.slice().sort((x, y) => x - y), DS = asc.map(s => E.seasonData(s));
+            const nm = id => E.nameOf[id] || '?';
+            const timeline = [];                                   // every ranked week, oldest first
+            DS.forEach(D => D.weeks.forEach(w => timeline.push({ s: D.s, w, V: D.byWeek[w], rank: new Map(D.byWeek[w].T.map(t => [t.id, t.rank])) })));
+            const ids = [...new Set(timeline.flatMap(x => x.V.T.map(t => t.id)))];
+            const at = i => `${timeline[i].s} Wk ${timeline[i].w}`;
+            // runs of consecutive ranked weeks where cond(rank, teams) holds; withinSeason stops a run at a season's end
+            const runs = (cond, withinSeason) => ids.flatMap(id => {
+                const out = []; let start = -1;
+                for (let i = 0; i <= timeline.length; i++) {
+                    const r = i < timeline.length ? timeline[i].rank.get(id) : undefined;
+                    const ok = r != null && cond(r, timeline[i].V.n);
+                    const newSeason = withinSeason && i > 0 && i < timeline.length && timeline[i].s !== timeline[i - 1].s;
+                    if (start >= 0 && (!ok || newSeason)) { out.push({ id, from: start, to: i - 1 }); start = -1; }
+                    if (ok && start < 0) start = i;
+                }
+                return out;
+            });
+            const runRec = list => list.map(x => ({ team: `${nm(x.id)} (${at(x.from)}) - to ${timeline[x.to].s === timeline[x.from].s ? `Wk ${timeline[x.to].w}` : at(x.to)}`, raw: x.to - x.from + 1, value: String(x.to - x.from + 1) }));
+            const count = (cond, bySeason) => {
+                const m = new Map();
+                timeline.forEach(x => x.V.T.forEach(t => { if (!cond(t.rank, x.V.n)) return;
+                    const k = bySeason ? `${t.id}|${x.s}` : t.id;
+                    const e = m.get(k) || { team: bySeason ? `${nm(t.id)} (${x.s})` : nm(t.id), raw: 0 }; e.raw++; m.set(k, e); }));
+                return [...m.values()].map(e => ({ ...e, value: String(e.raw) }));
+            };
+            const one = r => r === 1, top5 = r => r <= 5, last = (r, n) => r === n;
+            const done = DS.filter(D => D.complete);
+            // title games and final rankings
+            const titles = new Map(), apps = new Map(), cellar = new Map(), finals = new Map(), games = [];
+            const bump = (m, id) => m.set(id, (m.get(id) || 0) + 1);
+            done.forEach(D => {
+                const F = D.byWeek[D.N - 1], TG = E.titleGame(D);
+                F.T.forEach(t => { const f = finals.get(t.id) || []; f.push(t.rank); finals.set(t.id, f); if (t.rank === F.n) bump(cellar, t.id); });
+                if (!TG) return;
+                bump(apps, TG.A.id); bump(apps, TG.C.id);
+                if (TG.winner) { bump(titles, TG.winner.id); const lose = TG.winner === TG.A ? TG.C : TG.A, ws = Math.max(TG.a, TG.c), ls = Math.min(TG.a, TG.c);
+                    games.push({ team: `${TG.winner.mgr} (${D.s} Wk ${D.N}) - over ${lose.mgr}`, raw: ws - ls, value: (ws - ls).toFixed(1) }); }
+            });
+            // counts that tie are ordered by a second count (it only nudges the sort; the shown value stays whole)
+            const fromMap = (m, tie) => [...m.entries()].map(([id, v]) => ({ team: nm(id), raw: v + (tie ? (tie.get(id) || 0) / 1000 : 0), value: String(v) }));
+            const lastWeeks = new Map(); timeline.forEach(x => x.V.T.forEach(t => { if (t.rank === x.V.n) bump(lastWeeks, t.id); }));
+            const set = (key, list, better) => updateRecord(key, topN(list, better));
+
+            if (tab === 'league-records') {
+                addRecordCategoryAfter('league-records', 'Streaks', 'FBS Rankings (Career)', [
+                    { key: 'fbsTitles', title: 'National Champion', subtitle: 'Most FBS titles: won the No. 1 vs No. 2 title game' },
+                    { key: 'fbsTitleApps', title: 'Title Game Regular', subtitle: 'Most FBS title game appearances (finished the rankings No. 1 or No. 2)' },
+                    { key: 'fbsWeeksOne', title: 'Top of the Poll', subtitle: 'Most weeks ranked No. 1' },
+                    { key: 'fbsWeeksTop5', title: 'Top 5 Fixture', subtitle: 'Most weeks ranked in the top 5' },
+                    { key: 'fbsStreakOne', title: 'The Long Reign', subtitle: 'Longest streak of weeks ranked No. 1 (carries across seasons)' },
+                    { key: 'fbsStreakTop5', title: 'Staying Power', subtitle: 'Longest streak of weeks in the top 5 (carries across seasons)' },
+                    { key: 'fbsBestFinal', title: 'Blue Blood', subtitle: 'Best average final ranking (min 3 completed seasons)' },
+                    { key: 'fbsCellar', title: 'Cellar Dweller', subtitle: 'Most last-place finishes in the final rankings' },
+                    { key: 'fbsWeeksLast', title: 'Bottom of the Barrel', subtitle: 'Most weeks ranked last' },
+                    { key: 'fbsStreakLast', title: 'Long Lease on the Basement', subtitle: 'Longest streak of weeks ranked last (carries across seasons)' }
+                ], FBS_NOTE);
+                set('fbsTitles', fromMap(titles, apps), 'high');
+                set('fbsTitleApps', fromMap(apps, titles), 'high');
+                set('fbsWeeksOne', count(one, false), 'high');
+                set('fbsWeeksTop5', count(top5, false), 'high');
+                set('fbsStreakOne', runRec(runs(one, false)), 'high');
+                set('fbsStreakTop5', runRec(runs(top5, false)), 'high');
+                set('fbsBestFinal', [...finals.entries()].filter(([, f]) => f.length >= 3)
+                    .map(([id, f]) => { const v = f.reduce((a, x) => a + x, 0) / f.length; return { team: nm(id), raw: v, value: v.toFixed(2) }; }), 'low');
+                set('fbsCellar', fromMap(cellar, lastWeeks), 'high');
+                set('fbsWeeksLast', count(last, false), 'high');
+                set('fbsStreakLast', runRec(runs(last, false)), 'high');
+            } else {
+                // week-to-week moves and the season's biggest climb, inside one season
+                const moves = [], climbs = [];
+                DS.forEach(D => D.ids.forEach(id => {
+                    // weeks 1-3 swing too much on a game or two: moves and climbs count from week 4 on
+                    const path = D.weeks.filter(w => w >= FBS_FROM_WEEK).map(w => ({ w, r: (D.byWeek[w].T.find(t => t.id === id) || {}).rank })).filter(x => x.r != null);
+                    for (let i = 1; i < path.length; i++) moves.push({ id, s: D.s, w: path[i].w, w0: path[i - 1].w, d: path[i - 1].r - path[i].r, from: path[i - 1].r, to: path[i].r });
+                    let worst = null, best = null;
+                    path.forEach(x => { if (!worst || x.r > worst.r) worst = x; if (worst && x.w > worst.w && (!best || worst.r - x.r > best.d)) best = { d: worst.r - x.r, lo: worst, hi: x }; });
+                    if (best) climbs.push({ team: `${nm(id)} (${D.s} Wk ${best.hi.w}) - No. ${best.lo.r} (Wk ${best.lo.w}) → No. ${best.hi.r} (Wk ${best.hi.w})`, raw: best.d, value: String(best.d) });
+                }));
+                const moveRec = sign => moves.filter(m => sign * m.d > 0).map(m => ({ team: `${nm(m.id)} (${m.s} Wk ${m.w}) - No. ${m.from} (Wk ${m.w0}) → No. ${m.to} (Wk ${m.w})`, raw: Math.abs(m.d), value: String(Math.abs(m.d)) }));
+                // the final rankings of each completed season
+                const finalRows = done.flatMap(D => D.byWeek[D.N - 1].T.map(t => ({ t, s: D.s })));
+                const fin = (f, fmt) => finalRows.map(({ t, s }) => ({ team: `${t.mgr} (${s})`, raw: f(t), value: fmt(f(t)) }));
+                addRecordCategoryAfter('single-season', 'Single Season Records', 'FBS Rankings (Single Season)', [
+                    { key: 'fbsSeasonWeeksOne', title: 'Wire to Wire', subtitle: 'Most weeks ranked No. 1 in a season' },
+                    { key: 'fbsSeasonStreakOne', title: 'Unchallenged', subtitle: 'Longest streak at No. 1 within one season' },
+                    { key: 'fbsSeasonWeeksLast', title: 'Basement Season', subtitle: 'Most weeks ranked last in a season' },
+                    { key: 'fbsJump', title: 'Moonshot', subtitle: 'Biggest one-week climb in the rankings (week 4 on)', noValue: true },
+                    { key: 'fbsFall', title: 'Freefall', subtitle: 'Biggest one-week drop in the rankings (week 4 on)', noValue: true },
+                    { key: 'fbsClimb', title: 'Worst to First', subtitle: 'Biggest climb within a season, lowest ranking to a later one (week 4 on)', noValue: true },   // the label already says No. 16 -> 2
+                    { key: 'fbsTitleBlowout', title: 'Title Game Rout', subtitle: 'Biggest margin in an FBS title game' },
+                    { key: 'fbsTitleClose', title: 'Title Game Thriller', subtitle: 'Smallest margin in an FBS title game' },
+                    { key: 'fbsBestTotal', title: 'BCS Darling', subtitle: 'Lowest (best) BCS total in a season\'s final rankings' },
+                    { key: 'fbsBestFpi', title: 'Juggernaut', subtitle: 'Highest FPI in a season\'s final rankings (points a game over average)' },
+                    { key: 'fbsBestSor', title: 'Résumé of the Year', subtitle: 'Best strength of record in a season\'s final rankings (lowest chance an average team matches it)' },
+                    { key: 'fbsQualityWins', title: 'Giant Killer', subtitle: 'Most quality-win credit in a season\'s final rankings (wins over top-5 teams)' }
+                ], FBS_NOTE);
+                set('fbsSeasonWeeksOne', count(one, true), 'high');
+                set('fbsSeasonStreakOne', runRec(runs(one, true)), 'high');
+                set('fbsSeasonWeeksLast', count(last, true), 'high');
+                set('fbsJump', moveRec(1), 'high');
+                set('fbsFall', moveRec(-1), 'high');
+                set('fbsClimb', climbs, 'high');
+                set('fbsTitleBlowout', games, 'high');
+                set('fbsTitleClose', games, 'low');
+                set('fbsBestTotal', fin(t => t.total, v => v.toFixed(2)), 'low');
+                set('fbsBestFpi', fin(t => t.fpi, v => `+${v.toFixed(1)}`), 'high');
+                set('fbsBestSor', fin(t => t.sorP * 100, v => `${v.toFixed(2)}%`), 'low');
+                set('fbsQualityWins', fin(t => t.qw, v => v.toFixed(1)), 'high');
+            }
+        } catch (error) {
+            console.error('Error calculating FBS records:', error);
+        }
+    }
+
     // Lineup skill: FP+ and roster efficiency pooled over regular-season weeks (js/roster-metrics.js). Completed seasons only.
     const LINEUP_NOTE = 'FP+ is the points the starters scored divided by their projected points (100 = right on projection). Efficiency is the points they scored divided by what the best lineup on the roster would have scored, swapping in only bench players who beat a same-position starter. Both are pooled over regular-season weeks; completed seasons only.';
     async function calculateLineupRecords() {
@@ -657,9 +786,9 @@
             return `<li class="${i === 0 ? 'rb-holder' : ''}"><span class="rb-rank">${i + 1}</span>
                 ${d ? `<img src="${GT.logo(ownerOf(d.team))}" alt="">` : '<span></span>'}
                 <span class="rb-name" title="${esc(d ? d.team : '')}">${nameHTML(d)}</span>
-                <span class="rb-value">${esc(d ? d.value : '--')}</span></li>`;
+                ${card.noValue ? '' : `<span class="rb-value">${esc(d ? d.value : '--')}</span>`}</li>`;
         }).join('');
-        return `<div class="rb-card" data-key="${card.key}"><h3 class="rb-title" title="${esc(card.title)}">${esc(card.title)}</h3>
+        return `<div class="rb-card${card.noValue ? ' rb-novalue' : ''}" data-key="${card.key}"><h3 class="rb-title" title="${esc(card.title)}">${esc(card.title)}</h3>
             <p class="rb-sub" title="${esc(card.subtitle || '')}">${esc(card.subtitle || '')}</p><ol class="rb-list">${rows}</ol></div>`;
     };
     function renderRecords(tab) {
@@ -1026,6 +1155,7 @@
             if (page === 'single-season') await calculatePlayerRecords();
             if (page === 'single-game') await calculatePositionalAndBenchRecords();
             if (page !== 'single-game') { await calculateTransactionAndLuckRecords(); await calculateLineupRecords(); }
+            await calculateFbsRecords(page);
             await calculateGroupRecords(page);
             renderRecords(page);
         }

@@ -70,7 +70,10 @@
 
     // ============================================================ OVERVIEW
     async function overview() {
-        const [picks, stand, seasonAgg, onRoster] = await Promise.all([
+        // postseason splits: Playoff = the championship side (play-in / wild card, bracket rounds, the title game and the
+        // placement games among playoff teams); Gulag = every other postseason game; Postseason = both, as in Season by Season
+        const PLAYOFF_PERIODS = new Set(['Post-WC', 'Post-WB', 'Championship', '3rd Place', '5th Place', '7th Place']);
+        const [picks, stand, seasonAgg, onRoster, postRows] = await Promise.all([
             CAREER ? Promise.all(seasons.map(s => GT.draft(mgr.id, s).then(list => list[0] ? { ...list[0], season: s } : null))).then(l => l.filter(Boolean))
                    : GT.draft(mgr.id, season),
             CAREER ? null : GT.standings(season),
@@ -80,7 +83,11 @@
                         SUM(t.score_rank_on_week <= 3) AS top3, SUM(t.bench_score) AS bench
                       FROM matchup_team_stats t JOIN matchups m ON m.game_id = t.game_id
                       WHERE ($s = 0 OR m.season = $s) AND m.season_period = 'Regular' GROUP BY t.owner_id`, { $s: season }),
-            CAREER ? new Set() : GT.latestRosterIds(mgr.id, season)
+            CAREER ? new Set() : GT.latestRosterIds(mgr.id, season),
+            GT.query(`SELECT t.owner_id AS id, m.season_period AS period, COUNT(*) AS gp, SUM(t.team_score > t.opponent_score) AS w, SUM(t.team_score = t.opponent_score) AS ti
+                      FROM matchup_team_stats t JOIN matchups m ON m.game_id = t.game_id
+                      WHERE ($s = 0 OR m.season = $s) AND m.season_period <> 'Regular'
+                        AND t.team_score IS NOT NULL AND t.opponent_score IS NOT NULL GROUP BY t.owner_id, m.season_period`, { $s: season })
         ]);
         // career: leave out managers with under a quarter of the longest career (a 2-1 record shouldn't top the all-time table)
         if (CAREER) {
@@ -92,7 +99,7 @@
 
         // card 1: recent results (no future schedule is published yet)
         const card1 = `<div class="card"><div class="card-head"><span class="card-title">Recent Results</span></div>
-            <div class="card-body">${recent.length ? `<ul class="mini-list">${recent.map(g => {
+            <div class="card-body">${recent.length ? `<ul class="mini-list"><li class="mini-head"><span></span><span>Opponent</span><span>Date</span><span>Result</span></li>${recent.map(g => {
                 const r = GT.result(g);
                 return `<li><img src="${GT.logo(g.opp)}" alt=""><span>vs ${esc(g.opp)}</span>
                     <span class="when">${GT.fmtDate(GT.weekDate(b, g.season, g.week)) || 'Wk ' + g.week}</span>
@@ -102,7 +109,7 @@
 
         // card 2: draft picks
         const card2 = `<div class="card"><div class="card-head"><span class="card-title">${CAREER ? 'First Pick Each Season' : `${season} Draft Picks`}</span></div>
-            <div class="card-body">${picks.length ? `<ul class="mini-list pick-list">${picks.slice(0, 8).map(p => {
+            <div class="card-body">${picks.length ? `<ul class="mini-list pick-list"><li class="mini-head"><span>${CAREER ? 'Yr' : 'Pick'}</span><span>Player</span><span>Pos</span><span>Team</span></li>${picks.slice(0, 8).map(p => {
                 const gone = onRoster.size && !onRoster.has(p.pid);      // traded or dropped since the draft
                 return `<li class="${gone ? 'gone' : ''}"${gone ? ' title="No longer on the roster"' : ''}><span class="pk">${CAREER ? `'${String(p.season).slice(2)}` : p.pick}</span><span class="nm">${esc(p.name)}</span><span class="pos">${esc(p.pos)}</span><span class="when">${esc(p.team || '')}</span></li>`;
             }).join('')}</ul>`
@@ -133,16 +140,27 @@
         const me = seasonAgg.find(r => r.id === mgr.id);
         const rank = (key, desc = true) => me ? 1 + seasonAgg.filter(r => desc ? r[key] > me[key] : r[key] < me[key]).length : '-';
         seasonAgg.forEach(r => { r.pct = r.gp ? (r.w + r.ti / 2) / r.gp : 0; r.ppg = r.gp ? r.pf / r.gp : 0; r.papg = r.gp ? r.pa / r.gp : 0; r.diff = r.pf - r.pa; if (CAREER) { r.diff /= r.gp || 1; r.bench /= r.gp || 1; } });
+        // a postseason split: record and league rank (win %, then wins) among managers with games of that kind
+        const postKv = (label, keep) => {
+            const agg = {};
+            postRows.filter(r => keep(r.period)).forEach(r => { const a = agg[r.id] || (agg[r.id] = { gp: 0, w: 0, ti: 0 }); a.gp += r.gp; a.w += r.w; a.ti += r.ti; });
+            const mine = agg[mgr.id];
+            if (!mine) return kv(label, '-', null);
+            const pct = r => (r.w + r.ti / 2) / r.gp;
+            const rk = 1 + Object.values(agg).filter(r => pct(r) > pct(mine) || (pct(r) === pct(mine) && r.w > mine.w)).length;
+            return kv(label, `${mine.w}-${mine.gp - mine.w - mine.ti}${mine.ti ? '-' + mine.ti : ''}`, rk);
+        };
         const kv = (label, value, rk) => `<li><span>${label}</span><b>${value}</b><span class="rk">${rk ? ord(rk) : '-'}</span></li>`;
         const card4 = `<div class="card"><div class="card-head"><span class="card-title">${label} Manager Stats</span></div>
             <div class="card-body">${me ? `<ul class="kv kv-cols"><li class="head"><span>Stat</span><span>Value</span><span>League</span></li>
                 ${kv('Record', `${me.w}-${me.gp - me.w - me.ti}${me.ti ? '-' + me.ti : ''}`, rank('pct'))}
+                ${postKv('Postseason record', () => true)}
+                ${postKv('Playoff record', p => PLAYOFF_PERIODS.has(p))}
+                ${postKv('Gulag record', p => !PLAYOFF_PERIODS.has(p))}
                 ${kv('Points / game', GT.pts(me.ppg), rank('ppg'))}
-                ${kv('Allowed / game', GT.pts(me.papg), rank('papg', false))}
                 ${kv(CAREER ? 'Differential / game' : 'Point differential', (me.diff >= 0 ? '+' : '') + GT.pts(me.diff), rank('diff'))}
                 ${kv('High score', GT.pts(me.hi), rank('hi'))}
                 ${kv('Top-3 weeks', me.top3, rank('top3'))}
-                ${kv(CAREER ? 'Bench / game' : 'Bench points', CAREER ? GT.pts(me.bench) : Math.round(me.bench), rank('bench'))}
             </ul>` : '<div class="card-empty">No regular-season games.</div>'}</div>
             <a class="card-link" href="${mlink('stats-history', CAREER ? '&season=career' : '')}">Full stats history</a></div>`;
 
@@ -175,7 +193,7 @@
         }
 
         content.innerHTML = `<div class="wrap page-pad">
-            <div class="card-row">${card1}${card2}${card3}${card4}</div>
+            <div class="card-row ov-cards">${card1}${card2}${card3}${card4}</div>
             ${band}
             ${await featuredPlayers()}
             ${await scoreRanks()}
@@ -217,7 +235,7 @@
                 ${tile(lost.length, 'Weeks the wire won', lost[0] ? `worst: ${CAREER ? lost[0].season + ' ' : ''}W${lost[0].week} by ${GT.pts(lost[0].sp - lost[0].pf)}` : 'never lost to it', 'Weeks the Stream Team outscored this manager, and the biggest of those losses.')}
             </div>
             <div class="panel"><h3 class="panel-title" style="margin-bottom:6px">${CAREER ? 'Season by Season' : 'Week by Week'}</h3>
-                <p class="muted" style="font-size:11px;margin-bottom:6px">${CAREER ? `Bars = ${esc(mgr.name)} points per game; lines = the Stream Team and Best Wire averages that season` : `Bars = ${esc(mgr.name)}'s score (green beat the Stream Team); lines = the Stream Team and the Best Wire`}</p>
+                <p class="muted" style="font-size:11px;margin-bottom:6px">${CAREER ? `Bars = ${esc(mgr.name)} points per game; lines = the Stream Team and Best Wire averages that season` : `Bars = ${esc(mgr.name)}'s score (<span class="cw-accent"></span> beat the Stream Team); lines = the Stream Team and the Best Wire`}</p>
                 <div class="db-chart" id="mgr-stream-chart"></div></div>`;
         const c = { accent: SITE.color('accent'), red: SITE.color('danger'), muted: SITE.color('muted'), grid: SITE.color('track'), line: SITE.color('line-strong'), ink: SITE.color('ink') };
         let cats, bars, sp, sb;
@@ -428,7 +446,12 @@
 
     // ============================================================ MANAGER STATS HISTORY
     async function statsHistory() {
-        const accolades = await GT.query(`SELECT season, award FROM accolades WHERE owner_id = $id ORDER BY season`, { $id: mgr.id });
+        const [accolades, fbs] = await Promise.all([GT.query(`SELECT season, award FROM accolades WHERE owner_id = $id ORDER BY season`, { $id: mgr.id }),
+                                                    window.FbsEngine ? FbsEngine.load().catch(() => null) : null]);
+        // BCS Champion: won the FBS title game (No. 1 vs No. 2 after the weekly BCS-formula rankings), completed seasons
+        // last place: the bottom finish in the final placements that season
+        const lastPlace = s => { const p = b.finish[`${s}-${mgr.id}`], n = Object.keys(b.finish).filter(k => k.startsWith(`${s}-`)).length; return p && n && p === n ? p : null; };
+        const bcsChamp = s => { if (!fbs || !fbs.done.has(s)) return false; const TG = fbs.titleGame(fbs.seasonData(s)); return !!(TG && TG.winner && TG.winner.id === Number(mgr.id)); };
         const allReg = all.filter(g => g.period === 'Regular');
         const career = GT.record(allReg);
         const places = seasons.map(s => b.finish[`${s}-${mgr.id}`]).filter(Boolean);
@@ -436,12 +459,19 @@
         // seasons that reached the championship side: play-in, playoffs or the title game
         const playoffTrips = new Set(all.filter(g => ['Post-WC', 'Post-WB', 'Championship'].includes(g.period)).map(g => g.season)).size;
         const tile = (v, l, s = '') => `<div class="stat-tile"><div class="v">${v}</div><div class="l">${l}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`;
+        // awards as short chips; the full name shows on hover
+        const AWARD_ABBR = { '1st Place': '1st', '2nd Place': '2nd', '3rd Place': '3rd', 'Division Champion': 'DIV', 'Points Champion': 'PTS',
+                             'In-Season Champion': 'ISC', 'All-Play Champion': 'AP', 'BCS Champion': 'BCS' };
+        const AWARD_CLASS = { '1st Place': 'aw-gold', '2nd Place': 'aw-silver', '3rd Place': 'aw-bronze', 'BCS Champion': 'aw-bcs' };
+        const awardChip = a => { const last = /^\d+th Place$/.test(a) && !AWARD_ABBR[a];
+            return `<span class="aw-chip ${AWARD_CLASS[a] || (last ? 'aw-last' : '')}" data-tip="${esc(last ? `${a} (last place)` : a)}">${esc(AWARD_ABBR[a] || (last ? a.replace(' Place', '') : a.split(/[\s-]+/).map(w => w[0]).join('').toUpperCase()))}</span>`; };
         const bySeason = seasons.map(s => {
             const list = all.filter(g => g.season === s), r = list.filter(g => g.period === 'Regular');
             const post = list.filter(g => g.period !== 'Regular');
             return { s, r, post, rec: GT.record(r), pf: GT.sum(r, 'pf'), pa: GT.sum(r, 'pa'),
                      hi: r.length ? Math.max(...r.map(g => g.pf)) : 0, place: b.finish[`${s}-${mgr.id}`],
-                     div: b.division[`${s}-${mgr.id}`], awards: accolades.filter(a => a.season === s).map(a => a.award) };
+                     div: b.division[`${s}-${mgr.id}`], awards: [...accolades.filter(a => a.season === s).map(a => a.award), ...(bcsChamp(s) ? ['BCS Champion'] : []),
+                                                         ...(lastPlace(s) ? [`${ord(lastPlace(s))} Place`] : [])] };
         });
         content.innerHTML = `<div class="wrap page-pad">
             <div class="stat-tiles tiles-7" style="margin-top:34px">
@@ -454,8 +484,9 @@
                 ${tile(allReg.length ? GT.pts(Math.max(...allReg.map(g => g.pf))) : '-', 'Career high')}
             </div>
             <section class="an-section" id="analytics"><div class="loading">Comparing against the field...</div></section>
+            <section class="an-section" id="fbs-mgr"><div class="loading">Ranking every week...</div></section>
             <div class="panel"><div class="panel-head"><h3 class="panel-title">Season by Season</h3></div>
-                <div class="table-scroll"><table class="data-table" style="min-width:1000px">${SITE.cols('6%', '17%', '13%', '7%', '7%', '7%', '7%', '6%', '6%', '7%', '6%', '11%')}<thead><tr><th>Season</th><th>Team</th><th>Division</th><th class="num">Record</th>
+                <div class="table-scroll"><table class="data-table sh-table" style="min-width:1000px">${SITE.cols('6%', '13%', '10%', '7%', '7%', '7%', '7%', '6%', '6%', '7%', '6%', '18%')}<thead><tr><th>Season</th><th>Team</th><th>Division</th><th class="num">Record</th>
                     <th class="num">PF</th><th class="num">PA</th><th class="num">Diff</th><th class="num">PF / G</th><th class="num">High</th>
                     <th class="num">Playoffs</th><th class="num">Finish</th><th>Awards</th></tr></thead><tbody>
                 ${bySeason.map(x => `<tr><td><a href="${mlink('schedule', `&season=${x.s}`)}"><b>${x.s}</b></a></td><td>${esc(GT.teamName(b, mgr.name, x.s))}</td><td>${esc(x.div || '')}</td>
@@ -463,9 +494,10 @@
                     <td class="num ${x.pf >= x.pa ? 'win' : 'loss'}">${(x.pf >= x.pa ? '+' : '') + GT.pts(x.pf - x.pa)}</td>
                     <td class="num">${x.r.length ? GT.pts(x.pf / x.r.length) : '-'}</td><td class="num">${GT.pts(x.hi)}</td>
                     <td class="num">${x.post.length ? GT.record(x.post).text : '-'}</td><td class="num"><b>${x.place ? ord(x.place) : '-'}</b></td>
-                    <td class="muted">${esc(x.awards.join(', '))}</td></tr>`).join('')}
+                    <td class="sh-awards">${x.awards.map(awardChip).join('')}</td></tr>`).join('')}
                 </tbody></table></div></div></div>`;
         managerAnalytics();
+        managerFbs();
     }
 
     // ============================================================ VS THE FIELD (this season, every manager)
@@ -564,23 +596,144 @@
                         <text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" class="an-t">${w.x}</text>`;
             });
             svg += `<polyline points="${avgs.map((a, i) => `${(L + i * bw + bw / 2).toFixed(1)},${y(a).toFixed(1)}`).join(' ')}" class="an-avg-line"/>`;
-            return `<div class="an-chart"><div class="an-strip-label">${CAREER ? `Season by season · bars = ${esc(mgr.name)} points per game (green winning record, grey losing) · line = league average`
-                                                       : `Week by week · bars = ${esc(mgr.name)} (green win, grey loss) · line = league average`}</div>
+            return `<div class="an-chart"><div class="an-strip-label">${CAREER ? `Season by season · bars = ${esc(mgr.name)} points per game (<span class="cw-accent"></span> winning record, grey losing) · line = league average`
+                                                       : `Week by week · bars = ${esc(mgr.name)} (<span class="cw-accent"></span> win, grey loss) · line = league average`}</div>
                 <svg viewBox="0 0 ${W} ${H}" class="an-svg">${svg}</svg></div>`;
         })();
         host.innerHTML = `
             <div class="panel-head"><div><div class="eyebrow">${CAREER ? `Career regular season (${span}) · vs ${field.length} managers with ${minGames}+ games` : `${season} regular season · vs all ${field.length} managers`}</div><h2 class="section-title">Vs The Field</h2></div></div>
-            <div class="an-top"><div class="an-grades">
+            <div class="an-top an-top-solo"><div class="an-grades">
                 ${AN.gradeBadge('Overall', grade(['score', 'results', 'lineup']))}${AN.gradeBadge('Scoring', grade(['score']))}
                 ${AN.gradeBadge('Lineup', grade(['lineup']))}${AN.gradeBadge('Roster moves', grade(['moves']))}${AN.gradeBadge('Positional', AN.grade(slotRows.map(r => r.p)))}</div>
-                <div class="an-rank"><b>#${field.slice().sort((a, b) => b.ppg - a.ppg).findIndex(f => f.owner === mgr.name) + 1}</b><span>in points per game<br>of ${field.length} managers</span></div></div>
+</div>
             <div class="an-cols">${block('Scoring', rows.filter(r => r.cat === 'score'))}${block('Results & Luck', rows.filter(r => r.cat === 'results' || r.cat === 'luck'))}</div>
             <div class="an-cols">${block('Lineup & Roster Moves', rows.filter(r => r.cat === 'lineup' || r.cat === 'moves'))}${block('Positional Strength', slotRows)}</div>
             ${chart}
             ${AN.strip(field.map(f => f.allPlay), [{ label: mgr.name, value: me.allPlay, color: AN.color(rows.find(r => r.label === 'All-play win %').p) }],
                        { label: CAREER ? 'Career all-play win %, every qualified manager' : `All-play win %, every manager in ${season}`, fmt: v => `${v.toFixed(0)}%` })}
-            ${AN.legend()}
-            <p class="an-note">Percentiles compare ${esc(mgr.name)} with ${CAREER ? `every manager's pooled regular seasons (${span}); managers need ${minGames}+ games to count` : `every manager in the ${season} regular season`}. Luck rows are shown but left out of the grades. All-play win % is the record against every other team every week. Lineup efficiency and FP+ match the Recordbook.</p>`;
+            ${AN.legend()}`;
+    }
+
+    // ============================================================ FBS RANKINGS (js/fbs-engine.js: the Stats > FBS Rankings standings)
+    // Career: every season's path through the weekly rankings, the title games and the totals. One season: that season
+    // week by week. Weeks run from 1 to the week before each season's final week, as on the FBS Rankings page.
+    async function managerFbs() {
+        const host = document.getElementById('fbs-mgr');
+        if (!host || !window.FbsEngine) return;
+        try {
+            const E = await FbsEngine.load();
+            const id = Number(mgr.id);
+            const p3 = v => Number.isFinite(v) ? v.toFixed(3).replace(/^0/, '') : '-';
+            const sgn = v => Number.isFinite(v) ? (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) : '-';
+            const odds = v => !Number.isFinite(v) ? '-' : v < 0.001 ? '<0.1%' : v > 0.999 ? '>99.9%' : `${(v * 100).toFixed(1)}%`;
+            const rec = t => `${t.w}-${t.l}${t.t ? '-' + t.t : ''}`;
+            const list = E.seasons.slice().sort((x, y) => x - y).map(s => {
+                const D = E.seasonData(s);
+                const path = D.weeks.map(w => ({ w, n: D.byWeek[w].n, t: D.byWeek[w].T.find(t => t.id === id) })).filter(x => x.t);
+                if (!path.length) return null;
+                const TG = D.complete ? E.titleGame(D) : null, inTitle = !!(TG && (TG.A.id === id || TG.C.id === id));
+                const best = path.reduce((m, x) => x.t.rank < m.t.rank ? x : m), worst = path.reduce((m, x) => x.t.rank > m.t.rank ? x : m);
+                return { s, D, path, fin: path[path.length - 1], best, worst, TG, inTitle, won: inTitle && TG.winner && TG.winner.id === id,
+                         ones: path.filter(x => x.t.rank === 1).length, top5: path.filter(x => x.t.rank <= 5).length, lasts: path.filter(x => x.t.rank === x.n).length };
+            }).filter(Boolean);
+            const view = CAREER ? list : list.filter(x => x.s === season);
+            if (!view.length) { host.innerHTML = ''; return; }
+            const tile = (v, l, s = '') => `<div class="stat-tile"><div class="v">${v}</div><div class="l">${l}</div><div class="s">${s || '&nbsp;'}</div></div>`;
+            const sumOf = k => view.reduce((a, x) => a + x[k], 0);
+            const finals = view.filter(x => x.D.complete).map(x => x.fin.t.rank);
+            const titleText = x => !x.inTitle ? '-' : `${x.won ? 'Won' : 'Lost'} vs ${(x.TG.A.id === id ? x.TG.C : x.TG.A).mgr}`
+                + (x.TG.a != null && x.TG.c != null ? ` ${(x.TG.A.id === id ? x.TG.a : x.TG.c).toFixed(1)}-${(x.TG.A.id === id ? x.TG.c : x.TG.a).toFixed(1)}` : '');
+            // table pieces shared with the FBS page's Rankings table layout (two header rows, rank + value per stat)
+            const RS = ' rowspan="2"';
+            const grp = (label, tip) => `<th class="num fbs-grp" colspan="2" data-tip="${esc(tip)}">${label}</th>`;
+            const sub = (label, tip) => `<th class="num" data-tip="${esc(tip)}">${label}</th>`;
+            const pair = (rank, value) => `<td class="num fbs-rk"><b>${rank}</b></td><td class="num">${value}</td>`;
+            const SOR_TIP = 'Strength of record: how hard this record is to match. The chance an average team (FPI 0) would have this record or better against this exact schedule; the rarer, the better the rank.';
+            const SOS_TIP = 'Strength of schedule, the BCS way: two-thirds opponents\' record (games against this team removed) plus one-third their opponents\' record. Ties go to the opponents with the higher FPI. Rank 1 = toughest.';
+            const REM_TIP = 'Remaining strength of schedule: the same formula over the regular-season opponents still to play, on their records to date. Rank 1 = toughest road ahead.';
+            const FPI_TIP = 'Football Power Index: points a game better (or worse) than an average team, from scoring so far pulled toward average as if it had 4 extra average games.';
+            let tiles, table;
+            if (CAREER) {
+                const bestFin = finals.length ? Math.min(...finals) : null;
+                tiles = tile(view.filter(x => x.won).length, 'FBS titles', 'No. 1 vs No. 2 wins')
+                    + tile(view.filter(x => x.inTitle).length, 'Title games', `in ${view.filter(x => x.D.complete).length} full seasons`)
+                    + tile(sumOf('ones'), 'Weeks at No. 1', `of ${view.reduce((a, x) => a + x.path.length, 0)} ranked weeks`)
+                    + tile(sumOf('top5'), 'Weeks in top 5', 'consecutive or not')
+                    + tile(bestFin ? ord(bestFin) : '-', 'Best finish', bestFin ? view.filter(x => x.D.complete && x.fin.t.rank === bestFin).map(x => x.s).join(', ') : '')
+                    + tile(finals.length ? (finals.reduce((a, r) => a + r, 0) / finals.length).toFixed(1) : '-', 'Average finish', 'full seasons')
+                    + tile(sumOf('lasts'), 'Weeks in last', 'consecutive or not');
+                // same layout as the Rankings table on the FBS page: SOR, SOS and FPI each split into rank and value under a group heading
+                table = `<div class="table-scroll"><table class="data-table tf-t fbs-lb" style="min-width:960px">${SITE.cols('7%', '8%', '9%', '9%', '7%', '7%', '8%', '7.5%', '7.5%', '7.5%', '7.5%', '7.5%', '7.5%')}<thead><tr>
+                    <th class="num"${RS}>Season</th><th class="num"${RS} data-tip="Ranking after the last ranked week (week N - 1); the season in progress shows its latest week">Final</th>
+                    <th class="num"${RS}>Best</th><th class="num"${RS}>Worst</th><th class="num"${RS} data-tip="Weeks ranked No. 1">No. 1</th><th class="num"${RS} data-tip="Weeks ranked in the top 5">Top 5</th>
+                    <th class="num"${RS} data-tip="Overall record, playoff and placement games included">Record</th>
+                    ${grp('SOR', SOR_TIP)}${grp('SOS', SOS_TIP)}${grp('FPI', FPI_TIP)}</tr><tr>
+                    ${sub('Rank', 'SOR rank at the final ranking: 1 = the rarest record for an average team to match')}${sub('Chance', 'Chance an average team has this record or better against this schedule (lower is more impressive)')}
+                    ${sub('Rank', 'SOS rank at the final ranking: 1 = toughest schedule')}${sub('Opp %', 'BCS strength of schedule: two-thirds opponent win %, one-third their opponents win %')}
+                    ${sub('Rank', 'FPI rank at the final ranking: 1 = best scoring team')}${sub('Pts', 'Points a game better or worse than an average team')}</tr></thead><tbody>
+                    ${view.slice().reverse().map(x => { const t = x.fin.t;
+                        return `<tr><td class="num"><a href="${mlink('stats-history', `&season=${x.s}`)}"><b>${x.s}</b></a></td>
+                        <td class="num" data-tip="${esc(x.D.complete ? `Final ranking, week ${x.fin.w}` : `Latest ranking, week ${x.fin.w} (season in progress)`)}"><b>${t.rank}</b></td>
+                        <td class="num" data-tip="Week ${x.best.w}">${x.best.t.rank}</td><td class="num" data-tip="Week ${x.worst.w}">${x.worst.t.rank}</td>
+                        <td class="num">${x.ones}</td><td class="num">${x.top5}</td><td class="num">${rec(t)}</td>
+                        ${pair(t.sorRank, odds(t.sorP))}${pair(t.sosRank, p3(t.sos))}
+                        <td class="num fbs-rk"><b>${t.fpiRank}</b></td><td class="num ${t.fpi >= 0 ? 'win' : 'loss'}">${sgn(t.fpi)}</td></tr>`; }).join('')}
+                    </tbody></table></div>`;
+            } else {
+                const x = view[0], t = x.fin.t;
+                tiles = tile(ord(t.rank), x.D.complete ? 'Final ranking' : 'Current ranking', `after week ${x.fin.w}`)
+                    + tile(ord(x.best.t.rank), 'Best ranking', `week ${x.best.w}`)
+                    + tile(ord(x.worst.t.rank), 'Worst ranking', `week ${x.worst.w}`)
+                    + tile(x.ones, 'Weeks at No. 1', `of ${x.path.length} ranked weeks`)
+                    + tile(x.top5, 'Weeks in top 5', `of ${x.path.length} ranked weeks`)
+                    + tile(sgn(t.fpi), 'FPI', 'pts a game vs average')
+                    + tile(!x.D.complete ? '-' : x.won ? 'Won' : x.inTitle ? 'Lost' : '-', 'Title game', x.inTitle ? titleText(x).replace(/^(Won|Lost) /, '') : x.D.complete ? 'did not finish top 2' : 'season in progress');
+                // same layout as the Rankings table on the FBS page, a row per week instead of a row per team
+                table = `<div class="table-scroll"><table class="data-table tf-t fbs-lb" style="min-width:1000px">${SITE.cols('7%', '7%', '8%', '8%', '8%', '9%', '8%', '9%', '8%', '9%', '9%', '10%')}<thead><tr>
+                    <th class="num"${RS}>Week</th><th class="num"${RS} data-tip="FBS ranking: lowest BCS total ranks first">Rank</th>
+                    <th class="num"${RS} data-tip="Places gained or lost since the week before">Move</th><th class="num"${RS} data-tip="Overall record, playoff and placement games included">Record</th>
+                    ${grp('SOR', SOR_TIP)}${grp('SOS', SOS_TIP)}${grp('Rem SOS', REM_TIP)}${grp('FPI', FPI_TIP)}</tr><tr>
+                    ${sub('Rank', 'SOR rank: 1 = the rarest record for an average team to match')}${sub('Chance', 'Chance an average team has this record or better against this schedule (lower is more impressive)')}
+                    ${sub('Rank', 'SOS rank: 1 = toughest schedule to date')}${sub('Opp %', 'BCS strength of schedule: two-thirds opponent win %, one-third their opponents win %')}
+                    ${sub('Rank', 'Remaining SOS rank: 1 = toughest road ahead')}${sub('Opp %', 'Remaining opponents rated the same way, on their records to date')}
+                    ${sub('Rank', 'FPI rank: 1 = best scoring team')}${sub('Pts', 'Points a game better or worse than an average team')}</tr></thead><tbody>
+                    ${x.path.slice().reverse().map((p, i, arr) => { const prev = arr[i + 1], mv = prev ? prev.t.rank - p.t.rank : null, q = p.t;
+                        return `<tr><td class="num"><b>${p.w}</b></td><td class="num"><b>${q.rank}</b></td>
+                        <td class="num ${mv > 0 ? 'win' : mv < 0 ? 'loss' : 'muted'}">${mv == null ? '-' : mv > 0 ? `▲ ${mv}` : mv < 0 ? `▼ ${-mv}` : '='}</td>
+                        <td class="num">${rec(q)}</td>${pair(q.sorRank, odds(q.sorP))}${pair(q.sosRank, p3(q.sos))}
+                        ${q.rem == null ? '<td class="num fbs-rk"><span class="muted">-</span></td><td class="num"><span class="muted">-</span></td>' : pair(q.remRank, p3(q.rem))}
+                        <td class="num fbs-rk"><b>${q.fpiRank}</b></td><td class="num ${q.fpi >= 0 ? 'win' : 'loss'}">${sgn(q.fpi)}</td></tr>`; }).join('')}
+                    </tbody></table></div>`;
+            }
+            // the ranking path: No. 1 at the top; career runs every ranked week in order with a rule between seasons
+            const chart = (() => {
+                const pts = view.flatMap(x => x.path.map(p => ({ s: x.s, w: p.w, r: p.t.rank, n: p.n })));
+                const W = 1060, H = 210, L = 34, R = 12, T = 12, B = 26, maxN = Math.max(...pts.map(p => p.n));
+                const xs = i => L + (pts.length > 1 ? i / (pts.length - 1) : 0.5) * (W - L - R), y = r => T + (r - 1) / (maxN - 1 || 1) * (H - T - B);
+                let svg = '';
+                [1, 4, 8, 12, maxN].filter((v, i, a) => a.indexOf(v) === i).forEach(r => { svg += `<line x1="${L}" x2="${W - R}" y1="${y(r)}" y2="${y(r)}" class="an-grid"/><text x="${L - 6}" y="${y(r) + 4}" text-anchor="end" class="an-t">${r}</text>`; });
+                pts.forEach((p, i) => {
+                    if (CAREER ? (i === 0 || pts[i - 1].s !== p.s) : true) {
+                        if (CAREER && i > 0) svg += `<line x1="${xs(i - 0.5)}" x2="${xs(i - 0.5)}" y1="${T}" y2="${H - B}" class="fbs-mg-sep"/>`;
+                        svg += `<text x="${xs(i)}" y="${H - 8}" text-anchor="${CAREER ? 'start' : 'middle'}" class="an-t">${CAREER ? p.s : p.w}</text>`;
+                    }
+                });
+                // one line per season, so a season break never draws a jump
+                view.forEach(x => { const seg = pts.map((p, i) => ({ p, i })).filter(o => o.p.s === x.s);
+                    svg += `<polyline points="${seg.map(o => `${xs(o.i).toFixed(1)},${y(o.p.r).toFixed(1)}`).join(' ')}" class="fbs-mg-line"/>`; });
+                pts.forEach((p, i) => { svg += `<circle cx="${xs(i).toFixed(1)}" cy="${y(p.r).toFixed(1)}" r="${p.r === 1 ? 4 : 2.6}" class="${p.r === 1 ? 'fbs-mg-one' : 'fbs-mg-dot'}"><title>${p.s} week ${p.w}: No. ${p.r}</title></circle>`; });
+                return `<div class="an-chart"><div class="an-strip-label">${CAREER ? 'Ranking every week, every season' : `Ranking by week, ${season}`} <span>· No. 1 at the top, filled dots at No. 1</span></div>
+                    <svg viewBox="0 0 ${W} ${H}" class="an-svg">${svg}</svg></div>`;
+            })();
+            host.innerHTML = `<div class="panel-head"><div><div class="eyebrow">${CAREER ? `Career (${span})` : `${season} season`} · weekly BCS-formula rankings</div>
+                    <h2 class="section-title">FBS Rankings</h2></div><a class="card-link" href="${SITE.url(`pages/fbs-rankings.html${CAREER ? '' : `?season=${season}`}`)}">Full FBS rankings</a></div>
+                <div class="stat-tiles tiles-7 fbs-mtiles">${tiles}</div>
+                ${chart}
+                <div class="panel" style="margin-top:14px">${table}</div>`;
+        } catch (error) {
+            console.error('FBS section error:', error);
+            host.innerHTML = '';
+        }
     }
 
     // ============================================================ VS THE NFL
