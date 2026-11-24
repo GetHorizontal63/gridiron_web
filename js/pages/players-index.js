@@ -120,18 +120,44 @@
                 ON r.season = w.season AND r.week = w.week AND r.player_id = w.player_id
             WHERE r.player_id IS NULL AND w.points IS NOT NULL AND ($s = 0 OR w.season = $s) GROUP BY w.player_id`, { $s: yr === ALL ? 0 : Number(yr) })
         .then(rows => new Map(rows.map(r => [String(r.id), r]))).catch(() => new Map()));
+    // weekly points in league weeks (the same weeks Total FP adds up): rostered weeks use the roster's points,
+    // unrostered weeks the player's own; gives each player's median week and standard deviation
+    const weekCache = {};
+    const weekly = yr => weekCache[yr] || (weekCache[yr] = GT.query(`SELECT id, pts FROM (
+                SELECT frp.player_id AS id, MAX(frp.actual_points) AS pts
+                FROM fantasy_roster_players frp JOIN fantasy_rosters fr ON fr.roster_id = frp.roster_id
+                WHERE frp.actual_points IS NOT NULL AND ($s = 0 OR fr.season = $s) GROUP BY fr.season, fr.week, frp.player_id
+                UNION ALL
+                SELECT w.player_id, w.points FROM player_week_points w
+                JOIN (SELECT DISTINCT season, week FROM fantasy_rosters) lw ON lw.season = w.season AND lw.week = w.week
+                LEFT JOIN (SELECT DISTINCT fr.season, fr.week, f.player_id FROM fantasy_rosters fr JOIN fantasy_roster_players f ON f.roster_id = fr.roster_id) r
+                    ON r.season = w.season AND r.week = w.week AND r.player_id = w.player_id
+                WHERE r.player_id IS NULL AND w.points IS NOT NULL AND ($s = 0 OR w.season = $s))`, { $s: yr === ALL ? 0 : Number(yr) })
+        .then(rows => {
+            const by = {};
+            rows.forEach(r => { (by[r.id] = by[r.id] || []).push(r.pts); });
+            const out = new Map();
+            Object.entries(by).forEach(([id, v]) => {
+                v.sort((a, c) => a - c);
+                const n = v.length, mid = n >> 1, mean = v.reduce((a, c) => a + c, 0) / n;
+                out.set(String(id), { n, med: n % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2,
+                    sd: n > 1 ? Math.sqrt(v.reduce((a, c) => a + (c - mean) ** 2, 0) / (n - 1)) : null });
+            });
+            return out;
+        }).catch(() => new Map()));
     // the columns; every header sorts (numbers high first, text A-Z first; click again to flip)
     const RC = RATE_COLS.filter(c => !c.wide);
     const COLS = [
-        { k: 'name', label: 'Player', w: '22%', text: true, get: x => x.p.name },
+        { k: 'name', label: 'Player', w: '18%', text: true, get: x => x.p.name },
         { k: 'pos', label: 'Pos', w: '5%', text: true, get: x => x.p.pos },
-        { k: 'team', label: 'Team', w: '10%', text: true, get: x => (teamsOf(x.p) || [x.p.team]).join(', ') },
-        { k: 'g', label: 'Games', w: '6%', get: x => x.t.g },
+        { k: 'team', label: 'Team', w: '9%', text: true, get: x => (teamsOf(x.p) || [x.p.team]).join(', ') },
         { k: 'st', label: 'Start Pts', w: '9%', get: x => x.b && x.b.stwk ? x.b.st : null, tip: 'Points the player scored in league weeks he was in a starting lineup.' },
         { k: 'bench', label: 'Bench Pts', w: '9%', get: x => x.b && x.b.wk ? x.b.pts : null, tip: 'Points the player scored in league weeks he was on a roster but not in the starting lineup (bench or IR).' },
         { k: 'fa', label: 'FA Pts', w: '8%', get: x => x.fa ? x.fa.pts : null, tip: 'Free agency points: what the player scored in league weeks he was not on any roster.' },
         { k: 'tot', label: 'Total FP', w: '9%', get: x => x.tot, tip: 'Start + Bench + FA points: everything the player scored in league weeks.' },
-        ...RC.map(c => ({ k: c.k, label: c.label, w: '7.33%', rate: c, get: x => x.m && x.m.n ? c.get(x.m) : null, tip: `${c.tip} ${FPP.TIP}` }))
+        { k: 'med', label: 'MedFP', w: '7%', get: x => x.wk ? x.wk.med : null, tip: 'Median fantasy points per league week (the same weeks as Total FP).' },
+        { k: 'sd', label: 'SD', w: '6%', get: x => x.wk ? x.wk.sd : null, tip: 'Standard deviation of the player\'s fantasy points per league week: how much his weekly score swings.' },
+        ...RC.map(c => ({ k: c.k, label: c.label, w: '6.67%', rate: c, get: x => x.m && x.m.n ? c.get(x.m) : null, tip: `${c.tip} ${FPP.TIP}` }))
     ];
     let sort = { k: 'tot', dir: -1 };
     function head() {
@@ -147,7 +173,7 @@
     let drawn = 0;
     async function render() {
         const ticket = ++drawn;
-        const [mix, bp, fap] = await Promise.all([rates(season), bench(season), freeAgency(season)]);
+        const [mix, bp, fap, wkp] = await Promise.all([rates(season), bench(season), freeAgency(season), weekly(season)]);
         if (ticket !== drawn) return;                     // a newer render started while the data loaded
         head();
         const pc = v => v == null ? '-' : `${Math.round(v * 100)}%`;
@@ -156,7 +182,7 @@
         const list = players
             .filter(p => matches(pos, p.group) && (!ql || p.name.toLowerCase().includes(ql)))
             .map(p => { const b = bp.get(String(p.id)), fa = fap.get(String(p.id));
-                return { p, t: totals(p), b, fa, m: mix.get(String(p.id)), tot: (b ? b.st + b.pts : 0) + (fa ? fa.pts : 0) }; })
+                return { p, t: totals(p), b, fa, m: mix.get(String(p.id)), wk: wkp.get(String(p.id)), tot: (b ? b.st + b.pts : 0) + (fa ? fa.pts : 0) }; })
             .filter(x => x.t.g > 0)
             .sort((x, y) => { const a = col.get(x), c = col.get(y);
                 if (a == null && c == null) return 0; if (a == null) return 1; if (c == null) return -1;      // blanks always last
@@ -165,15 +191,17 @@
         page = Math.min(Math.max(1, page), pages);
         const start = (page - 1) * PER_PAGE;
         document.getElementById('rows').innerHTML = list.slice(start, start + PER_PAGE).map(x => {
-            const { p, t, b, fa, m, tot } = x, teams = teamsOf(p) || [p.team];
+            const { p, b, fa, m, wk, tot } = x, teams = teamsOf(p) || [p.team];
             const logo = `<img src="${PS.nflLogo(season === ALL ? p.team : teams[0])}" alt=""><b>${esc(p.name)}</b>`;
             return `<tr><td>${p.coach ? `<span class="team-cell">${logo}</span>`
                 : `<a class="team-cell" href="${url(`pages/players/stats.html?id=${encodeURIComponent(p.id)}`)}">${logo}</a>`}</td>
-                <td>${esc(p.pos)}</td><td>${esc(teams.join(', '))}</td><td class="num">${t.g}</td>
+                <td>${esc(p.pos)}</td><td>${esc(teams.join(', '))}</td>
                 <td class="num"${b && b.stwk ? ` data-tip="${b.stwk} starts"` : ''}>${b && b.stwk ? GT.pts(b.st) : '-'}</td>
                 <td class="num"${b && b.wk ? ` data-tip="${b.wk} benched weeks"` : ''}>${b && b.wk ? GT.pts(b.pts) : '-'}</td>
                 <td class="num"${fa ? ` data-tip="${fa.wk} weeks unrostered"` : ''}>${fa ? GT.pts(fa.pts) : '-'}</td>
                 <td class="num"><b>${GT.pts(tot)}</b></td>
+                <td class="num"${wk ? ` data-tip="${wk.n} league weeks"` : ''}>${wk ? GT.pts(wk.med) : '-'}</td>
+                <td class="num">${wk && wk.sd != null ? GT.pts(wk.sd) : '-'}</td>
                 ${RC.map(c => { const v = m && m.n ? c.get(m) : null;
                     return `<td class="num ${c.cls}"${m && m.n ? ` data-tip="${esc(`${c.label}: ${Math.round((v || 0) * m.n)} of ${m.n} projected weeks${m.unprojected ? ` (${m.unprojected} unprojected left out)` : ''}`)}"` : ''}>${pc(v)}</td>`; }).join('')}</tr>`;
         }).join('') || `<tr><td colspan="${COLS.length}" class="muted">No players found.</td></tr>`;
